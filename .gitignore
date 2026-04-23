@@ -4,6 +4,11 @@ target/
 *.pdb
 Cargo.lock
 
+# Compiled binaries
+pdf-mcp
+pdf-rest
+*.exe
+
 # ==================== Python ====================
 __pycache__/
 *.py[cod]
