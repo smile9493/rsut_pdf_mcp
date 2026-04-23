@@ -91,6 +91,23 @@ jobs:
           cd pdf-module-rs
           cargo build --release --target ${{ matrix.target }} --bin pdf-mcp
 
+      - name: Optimize binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd pdf-module-rs/target/${{ matrix.target }}/release
+          # Strip debug symbols
+          strip pdf-mcp
+          # Show size reduction
+          ls -lh pdf-mcp
+
+      - name: Optimize binary (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cd pdf-module-rs/target/${{ matrix.target }}/release
+          # Strip debug symbols
+          strip pdf-mcp.exe
+          dir pdf-mcp.exe
+
       - name: Package (Unix)
         if: runner.os != 'Windows'
         run: |
@@ -159,6 +176,14 @@ jobs:
         run: |
           cd pdf-module-rs
           cross build --release --target ${{ matrix.target }} --bin pdf-mcp --bin pdf-rest
+
+      - name: Optimize binaries
+        run: |
+          cd pdf-module-rs/target/${{ matrix.target }}/release
+          # Strip debug symbols to reduce size
+          strip pdf-mcp pdf-rest
+          # Show size reduction
+          ls -lh pdf-mcp pdf-rest
 
       - name: Package
         run: |
