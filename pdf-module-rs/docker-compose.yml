@@ -1,0 +1,16 @@
+services:
+  pdf-rest:
+    build:
+      context: .
+      target: rest
+    ports:
+      - "8000:8000"
+    environment:
+      - PDF_SERVER_HOST=0.0.0.0
+      - PDF_SERVER_PORT=8000
+      - PDF_DEFAULT_ADAPTER=lopdf
+      - PDF_CACHE_ENABLED=true
+      - PDF_MAX_FILE_SIZE_MB=200
+    volumes:
+      - ./data:/data:ro
+    restart: unless-stopped

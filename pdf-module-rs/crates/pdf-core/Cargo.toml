@@ -1,0 +1,63 @@
+[package]
+name = "pdf-core"
+version = "0.1.0"
+edition = "2021"
+description = "Core library for PDF extraction: engines, cache, validator, keyword extractor"
+
+[dependencies]
+# 序列化
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# 异步
+tokio = { workspace = true }
+futures = { workspace = true }
+async-trait = { workspace = true }
+
+# 日志
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# 错误
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# PDF 引擎
+lopdf = { workspace = true }
+pdf-extract = { workspace = true }
+pdfium-render = { workspace = true }
+
+# 缓存
+moka = { workspace = true }
+
+# 哈希
+sha2 = { workspace = true }
+
+# 正则 & 分词
+regex = { workspace = true }
+jieba-rs = { workspace = true }
+once_cell = { workspace = true }
+
+# 配置
+dotenvy = { workspace = true }
+toml = { workspace = true }
+serde_yaml = { workspace = true }
+
+# 可观测性
+metrics = { workspace = true }
+
+# 文件嗅探
+infer = { workspace = true }
+
+# 时间
+chrono = { workspace = true }
+
+# UUID
+uuid = { workspace = true }
+
+# 文件系统
+walkdir = { workspace = true }
+bytes = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.10"

@@ -1,0 +1,95 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/pdf-core",
+    "crates/pdf-mcp",
+    "crates/pdf-rest",
+    "crates/pdf-python",
+]
+
+[workspace.dependencies]
+# === 序列化 ===
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# === 异步 ===
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# === 日志 ===
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-config = "0.2"
+
+# === 错误 ===
+thiserror = "2.0"
+anyhow = "1.0"
+
+# === PDF 引擎 ===
+lopdf = "0.34"
+pdf-extract = "0.7"
+pdfium-render = { version = "0.8", features = ["sync"] }
+
+# === 缓存 ===
+moka = { version = "0.12", features = ["sync"] }
+
+# === 哈希 ===
+sha2 = "0.10"
+
+# === 正则 & 分词 ===
+regex = "1.10"
+jieba-rs = "0.7"
+once_cell = "1.19"
+
+# === 配置 ===
+dotenvy = "0.15"
+config = { version = "0.15", features = ["toml", "json", "yaml", "async"] }
+hot-lib-reloader = "0.8"
+toml = "0.8"
+serde_yaml = "0.9"
+
+# === Web (REST) ===
+axum = { version = "0.8", features = ["multipart"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+utoipa = "5.0"
+utoipa-swagger-ui = "8.0"
+
+# === MCP 协议 ===
+rust-mcp-sdk = { version = "0.9", features = ["server", "stdio", "sse", "streamable-http", "auth"] }
+json-rpc-rs = "0.3"
+sse = "0.2"
+
+# === CLI ===
+clap = { version = "4.4", features = ["derive", "env"] }
+
+# === 可观测性 ===
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
+opentelemetry = { version = "0.31", features = ["trace", "metrics"] }
+
+# === 文件嗅探 ===
+infer = "0.16"
+
+# === 时间 ===
+chrono = { version = "0.4", features = ["serde"] }
+
+# === UUID ===
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# === 字节处理 ===
+bytes = "1.5"
+
+# === 文件存储 ===
+aws-sdk-s3 = "1.0"
+google-cloud-storage = { version = "1.11", features = ["default-rustls-provider"] }
+azure_storage_blobs = { version = "0.21", features = ["enable_reqwest"] }
+remotefs-aws-s3 = "0.4"
+
+# === 插件化架构 ===
+mcp-kit = { version = "0.4", features = ["full", "plugin-hot-reload"] }
+libloading = "0.9"
+wasmtime = { version = "44", features = ["default"] }
+
+# === 文件系统遍历 ===
+walkdir = "2.4"

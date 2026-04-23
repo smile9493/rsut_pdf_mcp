@@ -1,0 +1,21 @@
+[package]
+name = "pdf-python"
+version = "0.1.0"
+edition = "2021"
+description = "Python bindings for PDF extraction (optional)"
+
+[lib]
+name = "pdf_python"
+crate-type = ["cdylib"]
+
+[dependencies]
+pdf-core = { path = "../pdf-core" }
+
+# Python bindings
+pyo3 = { version = "0.22", features = ["extension-module"] }
+
+# 异步
+tokio = { workspace = true }
+
+# 错误
+anyhow = { workspace = true }

@@ -1,0 +1,38 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libssl3 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pdf-rest /usr/local/bin/pdf-rest
+COPY pdf-mcp /usr/local/bin/pdf-mcp
+
+RUN useradd -m -u 1000 pdfuser && \
+    mkdir -p /app/data /app/logs/audit /app/cache && \
+    chown -R pdfuser:pdfuser /app
+
+ENV RUST_LOG=info
+ENV STORAGE_TYPE=local
+ENV STORAGE_LOCAL_DIR=/app/data
+ENV CACHE_ENABLED=true
+ENV CACHE_MAX_SIZE_MB=100
+ENV AUDIT_ENABLED=true
+ENV AUDIT_LOG_DIR=/app/logs/audit
+ENV AUDIT_RETENTION_DAYS=30
+ENV LOG_LEVEL=info
+ENV LOG_FORMAT=text
+ENV ENABLE_CORS=true
+ENV ALLOWED_ORIGINS=*
+ENV MAX_FILE_SIZE_MB=100
+ENV ALLOWED_EXTENSIONS=pdf
+
+EXPOSE 8000 8001
+
+USER pdfuser
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/api/v1/x2text/health || exit 1
+
+CMD ["pdf-rest"]
