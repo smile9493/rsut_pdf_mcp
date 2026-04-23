@@ -1,0 +1,51 @@
+# CI Dockerfile - 用于 GitHub Actions 构建
+# 二进制文件由 CI 预先编译，此 Dockerfile 仅打包
+
+FROM debian:bookworm-slim
+
+# 安装运行时依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libssl3 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 创建非 root 用户
+RUN useradd -m -u 1000 pdfuser
+
+# 设置工作目录
+WORKDIR /app
+
+# 复制预编译的二进制文件
+COPY pdf-mcp /usr/local/bin/pdf-mcp
+COPY pdf-rest /usr/local/bin/pdf-rest
+
+# 设置权限
+RUN chmod +x /usr/local/bin/pdf-mcp /usr/local/bin/pdf-rest
+
+# 创建必要目录
+RUN mkdir -p /app/data /app/logs/audit /app/cache && \
+    chown -R pdfuser:pdfuser /app
+
+# 切换到非 root 用户
+USER pdfuser
+
+# 环境变量
+ENV RUST_LOG=info
+ENV STORAGE_TYPE=local
+ENV STORAGE_LOCAL_DIR=/app/data
+ENV CACHE_ENABLED=true
+ENV CACHE_MAX_SIZE=1000
+ENV AUDIT_ENABLED=true
+ENV AUDIT_LOG_DIR=/app/logs/audit
+ENV MAX_FILE_SIZE_MB=100
+
+# 暴露端口
+EXPOSE 8000 8001
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
+# 默认启动 MCP 服务
+CMD ["pdf-mcp", "serve", "--transport", "sse", "--port", "8001"]

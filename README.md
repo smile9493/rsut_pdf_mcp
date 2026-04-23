@@ -3,6 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/Rust-1.83%2B-orange.svg)](https://www.rust-lang.org/)
 [![Docker](https://img.shields.io/badge/Docker-ready-blue.svg)](https://www.docker.com/)
+[![Build](https://github.com/smile9493/rsut_pdf_mcp/actions/workflows/build.yml/badge.svg)](https://github.com/smile9493/rsut_pdf_mcp/actions/workflows/build.yml)
 
 高性能 PDF 文本提取 MCP (Model Context Protocol) 服务器，支持多种提取引擎、智能路由、缓存优化，可直接集成到 Cursor、Claude Desktop 等 AI Agent。
 
@@ -22,6 +23,7 @@
 - [配置参考](#配置参考)
 - [性能优化](#性能优化)
 - [安全机制](#安全机制)
+- [CI/CD](#cicd)
 - [开发指南](#开发指南)
 
 ---
@@ -782,6 +784,89 @@ PATH_ALLOW_TRAVERSAL=false        # 禁止路径遍历
 | 绝对路径要求 | 默认仅允许绝对路径 |
 | 审计日志 | JSONL 格式，支持查询和自动清理 |
 | 非 root 运行 | 容器内以 pdfuser (uid 1000) 运行 |
+
+---
+
+## CI/CD
+
+### GitHub Actions 工作流
+
+项目使用 GitHub Actions 实现自动化构建和发布。
+
+### 触发条件
+
+| 事件 | 说明 |
+|------|------|
+| `push` to `main` | 触发测试、构建 Docker 镜像 |
+| `push` tag `v*` | 触发完整发布流程 |
+| `pull_request` | 触发测试 |
+| `workflow_dispatch` | 手动触发 |
+
+### 构建产物
+
+#### 客户端版本 (多平台)
+
+| 平台 | 文件 | 说明 |
+|------|------|------|
+| Linux x64 | `pdf-mcp-client-linux-x64.tar.gz` | 通用 Linux 客户端 |
+| macOS x64 | `pdf-mcp-client-macos-x64.tar.gz` | Intel Mac 客户端 |
+| macOS ARM64 | `pdf-mcp-client-macos-arm64.tar.gz` | Apple Silicon 客户端 |
+| Windows x64 | `pdf-mcp-client-windows-x64.zip` | Windows 客户端 |
+
+#### 服务器版本 (Linux)
+
+| 平台 | 文件 | 说明 |
+|------|------|------|
+| Linux x64 | `pdf-server-linux-x64.tar.gz` | 包含 `pdf-mcp` + `pdf-rest` |
+| Linux ARM64 | `pdf-server-linux-arm64.tar.gz` | 包含 `pdf-mcp` + `pdf-rest` |
+
+### Docker 镜像
+
+| 标签 | 说明 |
+|------|------|
+| `smile9493/pdf-mcp:latest` | 最新版本 |
+| `smile9493/pdf-mcp:main` | main 分支构建 |
+| `smile9493/pdf-mcp:v0.1.0` | 指定版本 |
+
+### 配置 GitHub Secrets
+
+在 GitHub 仓库设置中添加以下 Secrets：
+
+| Secret | 说明 |
+|--------|------|
+| `DOCKERHUB_USERNAME` | Docker Hub 用户名 |
+| `DOCKERHUB_TOKEN` | Docker Hub Access Token |
+
+**创建 Docker Hub Token**：
+1. 登录 [Docker Hub](https://hub.docker.com/)
+2. Account Settings → Security → New Access Token
+3. 选择 Read, Write, Delete 权限
+4. 复制 Token 到 GitHub Secrets
+
+### 发布流程
+
+```bash
+# 1. 更新版本号
+# 编辑 Cargo.toml 中的 version
+
+# 2. 创建标签并推送
+git tag v0.1.0
+git push origin v0.1.0
+
+# 3. GitHub Actions 自动执行：
+#    - 运行测试
+#    - 构建多平台客户端
+#    - 构建 Linux 服务器版本
+#    - 推送 Docker 镜像
+#    - 创建 GitHub Release
+```
+
+### 手动触发构建
+
+在 GitHub 仓库页面：
+1. Actions → Build and Release
+2. Run workflow
+3. 选择分支后运行
 
 ---
 

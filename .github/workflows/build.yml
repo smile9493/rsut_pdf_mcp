@@ -1,0 +1,320 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ==================== 测试 ====================
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            pdf-module-rs/target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run tests
+        run: |
+          cd pdf-module-rs
+          cargo test --all-features
+
+      - name: Run clippy
+        run: |
+          cd pdf-module-rs
+          cargo clippy --all-features -- -D warnings
+
+  # ==================== 构建客户端版本 (多平台) ====================
+  build-client:
+    name: Client (${{ matrix.target }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: pdf-mcp-client-linux-x64
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            artifact: pdf-mcp-client-macos-x64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            artifact: pdf-mcp-client-macos-arm64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            artifact: pdf-mcp-client-windows-x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            pdf-module-rs/target
+          key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build client
+        run: |
+          cd pdf-module-rs
+          cargo build --release --target ${{ matrix.target }} --bin pdf-mcp
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd pdf-module-rs/target/${{ matrix.target }}/release
+          tar -czvf ${{ matrix.artifact }}.tar.gz pdf-mcp
+          mv ${{ matrix.artifact }}.tar.gz $GITHUB_WORKSPACE/
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cd pdf-module-rs/target/${{ matrix.target }}/release
+          7z a ${{ matrix.artifact }}.zip pdf-mcp.exe
+          mv ${{ matrix.artifact }}.zip $GITHUB_WORKSPACE/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}.tar.gz
+            ${{ matrix.artifact }}.zip
+
+  # ==================== 构建服务器版本 (Linux) ====================
+  build-server:
+    name: Server (${{ matrix.target }})
+    needs: test
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            artifact: pdf-server-linux-x64
+          - target: aarch64-unknown-linux-gnu
+            artifact: pdf-server-linux-arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross
+        run: cargo install cross
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            pdf-module-rs/target
+          key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build server (x86_64)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          cd pdf-module-rs
+          cargo build --release --target ${{ matrix.target }} --bin pdf-mcp --bin pdf-rest
+
+      - name: Build server (aarch64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          cd pdf-module-rs
+          cross build --release --target ${{ matrix.target }} --bin pdf-mcp --bin pdf-rest
+
+      - name: Package
+        run: |
+          cd pdf-module-rs/target/${{ matrix.target }}/release
+          tar -czvf ${{ matrix.artifact }}.tar.gz pdf-mcp pdf-rest
+          mv ${{ matrix.artifact }}.tar.gz $GITHUB_WORKSPACE/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.tar.gz
+
+  # ==================== 构建 Docker 镜像 ====================
+  docker:
+    name: Docker (${{ matrix.platform }})
+    needs: build-server
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event_name == 'push')
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            target: x86_64-unknown-linux-gnu
+          - platform: linux/arm64
+            target: aarch64-unknown-linux-gnu
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download server artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pdf-server-${{ matrix.target == 'x86_64-unknown-linux-gnu' && 'linux-x64' || 'linux-arm64' }}
+          path: ./binaries
+
+      - name: Extract binaries
+        run: |
+          cd binaries
+          tar -xzf *.tar.gz
+          mv pdf-mcp pdf-rest ../
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: smile9493/pdf-mcp
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          file: ./docker/Dockerfile.ci
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  # ==================== 合并 Docker Manifest ====================
+  docker-manifest:
+    name: Docker Manifest
+    needs: docker
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event_name == 'push')
+
+    steps:
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: smile9493/pdf-mcp
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create and push manifest
+        run: |
+          for tag in ${{ steps.meta.outputs.tags }}; do
+            docker manifest create $tag \
+              $tag@${{ needs.docker.outputs.amd64-digest }} \
+              $tag@${{ needs.docker.outputs.arm64-digest }}
+            docker manifest push $tag
+          done
+
+  # ==================== 发布 Release ====================
+  release:
+    name: Release
+    needs: [build-client, build-server]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ steps.version.outputs.VERSION }}
+          body: |
+            ## PDF Module MCP Server ${{ steps.version.outputs.VERSION }}
+            
+            ### 客户端版本 (多平台)
+            - `pdf-mcp-client-linux-x64.tar.gz` - Linux x64 客户端
+            - `pdf-mcp-client-macos-x64.tar.gz` - macOS x64 客户端
+            - `pdf-mcp-client-macos-arm64.tar.gz` - macOS ARM64 客户端
+            - `pdf-mcp-client-windows-x64.zip` - Windows x64 客户端
+            
+            ### 服务器版本 (Linux)
+            - `pdf-server-linux-x64.tar.gz` - Linux x64 服务器 (pdf-mcp + pdf-rest)
+            - `pdf-server-linux-arm64.tar.gz` - Linux ARM64 服务器 (pdf-mcp + pdf-rest)
+            
+            ### Docker 镜像
+            ```bash
+            docker pull smile9493/pdf-mcp:${{ steps.version.outputs.VERSION }}
+            ```
+            
+            ### 使用说明
+            详见 [README.md](https://github.com/smile9493/rsut_pdf_mcp#readme)
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
+          draft: false
+          prerelease: false
