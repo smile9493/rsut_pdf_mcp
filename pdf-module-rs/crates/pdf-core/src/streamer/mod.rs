@@ -6,12 +6,13 @@
 //! - `StdioMessageStreamer`: Implementation for stdio communication
 //! - `SseMessageStreamer`: Implementation for SSE communication
 
-pub mod tool_message;
-pub mod streamer;
-pub mod stdio;
 pub mod sse;
+pub mod stdio;
+#[allow(clippy::module_inception)]
+pub mod streamer;
+pub mod tool_message;
 
-pub use tool_message::ToolMessage;
-pub use streamer::{MessageStreamer, NoOpMessageStreamer};
-pub use stdio::StdioMessageStreamer;
 pub use sse::SseMessageStreamer;
+pub use stdio::StdioMessageStreamer;
+pub use streamer::{MessageStreamer, NoOpMessageStreamer};
+pub use tool_message::ToolMessage;

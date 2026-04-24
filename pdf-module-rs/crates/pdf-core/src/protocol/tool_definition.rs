@@ -1,7 +1,7 @@
 //! Tool definition protocol
 //! Defines the metadata and schema for MCP tools
 
-use crate::dto::{Parameter, InputType, OutputType, ToolRequirements};
+use crate::dto::{InputType, OutputType, Parameter, ToolRequirements};
 use crate::error::{PdfModuleError, PdfResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -111,14 +111,16 @@ impl ToolDefinition {
         // Validate each parameter
         for param in &self.parameters {
             if param.name.is_empty() {
-                return Err(PdfModuleError::InvalidToolDefinition(
-                    format!("Parameter name cannot be empty for parameter: {:?}", param),
-                ));
+                return Err(PdfModuleError::InvalidToolDefinition(format!(
+                    "Parameter name cannot be empty for parameter: {:?}",
+                    param
+                )));
             }
             if param.description.is_empty() {
-                return Err(PdfModuleError::InvalidToolDefinition(
-                    format!("Parameter description cannot be empty for parameter: {}", param.name),
-                ));
+                return Err(PdfModuleError::InvalidToolDefinition(format!(
+                    "Parameter description cannot be empty for parameter: {}",
+                    param.name
+                )));
             }
         }
 
@@ -169,7 +171,7 @@ impl ToolDefinition {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dto::{ParameterType, Parameter};
+    use crate::dto::{Parameter, ParameterType};
 
     #[test]
     fn test_tool_definition_creation() {

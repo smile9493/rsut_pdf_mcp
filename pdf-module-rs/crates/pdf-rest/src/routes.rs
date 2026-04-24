@@ -43,7 +43,10 @@ async fn extract_text_file(
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
-        .header(header::CONTENT_DISPOSITION, "attachment; filename=\"extracted.txt\"")
+        .header(
+            header::CONTENT_DISPOSITION,
+            "attachment; filename=\"extracted.txt\"",
+        )
         .body(result.extracted_text.into())
         .map_err(|e| ApiError::Internal(format!("Failed to build response: {}", e)))
 }
@@ -102,9 +105,11 @@ async fn parse_multipart(
     let mut file_path = None;
     let mut adapter = None;
 
-    while let Some(field) = multipart.next_field().await.map_err(|e| {
-        ApiError::BadRequest(format!("Failed to parse multipart: {}", e))
-    })? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Failed to parse multipart: {}", e)))?
+    {
         let name = field.name().unwrap_or_default().to_string();
 
         match name.as_str() {
@@ -118,21 +123,22 @@ async fn parse_multipart(
                     ApiError::Internal(format!("Failed to create temp file: {}", e))
                 })?;
 
-                temp_file.write_all(&data).map_err(|e| {
-                    ApiError::Internal(format!("Failed to write temp file: {}", e))
-                })?;
+                temp_file
+                    .write_all(&data)
+                    .map_err(|e| ApiError::Internal(format!("Failed to write temp file: {}", e)))?;
 
                 // Keep the temp file and get its path
-                let (_file, path) = temp_file.keep().map_err(|e| {
-                    ApiError::Internal(format!("Failed to keep temp file: {}", e))
-                })?;
+                let (_file, path) = temp_file
+                    .keep()
+                    .map_err(|e| ApiError::Internal(format!("Failed to keep temp file: {}", e)))?;
 
                 file_path = Some(path);
             }
             "adapter" => {
-                let text = field.text().await.map_err(|e| {
-                    ApiError::BadRequest(format!("Failed to read adapter: {}", e))
-                })?;
+                let text = field
+                    .text()
+                    .await
+                    .map_err(|e| ApiError::BadRequest(format!("Failed to read adapter: {}", e)))?;
                 adapter = Some(text);
             }
             _ => {}

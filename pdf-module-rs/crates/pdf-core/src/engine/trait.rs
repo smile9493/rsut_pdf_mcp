@@ -42,10 +42,8 @@ pub trait PdfEngine: Send + Sync {
     /// Returns an async iterator for memory-efficient processing
     async fn extract_page_stream(
         &self,
-        #[allow(unused_variables)]
-        file_path: &Path,
-        #[allow(unused_variables)]
-        options: &ExtractOptions,
+        #[allow(unused_variables)] file_path: &Path,
+        #[allow(unused_variables)] options: &ExtractOptions,
     ) -> PdfResult<Pin<Box<dyn Stream<Item = PdfResult<PageMetadata>> + Send>>> {
         // Default implementation returns error
         Err(crate::error::PdfModuleError::Extraction(

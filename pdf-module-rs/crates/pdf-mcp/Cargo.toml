@@ -13,6 +13,7 @@ pdf-core = { path = "../pdf-core" }
 
 # 异步
 tokio = { workspace = true }
+async-trait = { workspace = true }
 
 # 序列化
 serde = { workspace = true }

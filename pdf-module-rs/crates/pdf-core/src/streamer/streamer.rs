@@ -3,7 +3,7 @@
 
 use crate::dto::{LogLevel, ToolExecutionResult};
 use crate::error::PdfResult;
-use crate::protocol::{ToolDefinition, ToolSpec, RuntimeVariables};
+use crate::protocol::{RuntimeVariables, ToolDefinition, ToolSpec};
 use crate::streamer::tool_message::ToolMessage;
 use async_trait::async_trait;
 

@@ -68,8 +68,9 @@ impl PdfEngine for PdfExtractEngine {
             .map_err(|e| PdfModuleError::Extraction(format!("Failed to extract text: {}", e)))?;
 
         // Get page count from lopdf
-        let doc = Document::load(file_path)
-            .map_err(|e| PdfModuleError::Extraction(format!("Failed to load PDF for page count: {}", e)))?;
+        let doc = Document::load(file_path).map_err(|e| {
+            PdfModuleError::Extraction(format!("Failed to load PDF for page count: {}", e))
+        })?;
         let page_count = doc.get_pages().len() as u32;
 
         // Create a single page with all text (pdf-extract doesn't provide per-page info)

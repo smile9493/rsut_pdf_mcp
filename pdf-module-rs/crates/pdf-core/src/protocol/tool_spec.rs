@@ -43,9 +43,10 @@ impl ToolSpec {
     pub fn validate(&self) -> PdfResult<()> {
         // Check spec_type is "object"
         if self.spec_type != "object" {
-            return Err(PdfModuleError::InvalidToolDefinition(
-                format!("spec_type must be 'object', got '{}'", self.spec_type),
-            ));
+            return Err(PdfModuleError::InvalidToolDefinition(format!(
+                "spec_type must be 'object', got '{}'",
+                self.spec_type
+            )));
         }
 
         // Check title is not empty
@@ -153,14 +154,17 @@ impl ToolSpec {
 
 impl Default for ToolSpec {
     fn default() -> Self {
-        Self::new("Tool Configuration".to_string(), "Tool runtime configuration".to_string())
+        Self::new(
+            "Tool Configuration".to_string(),
+            "Tool runtime configuration".to_string(),
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dto::{PropertyType, Property};
+    use crate::dto::{Property, PropertyType};
 
     #[test]
     fn test_tool_spec_creation() {
@@ -177,10 +181,7 @@ mod tests {
 
     #[test]
     fn test_tool_spec_validation() {
-        let mut spec = ToolSpec::new(
-            "Test Config".to_string(),
-            "Test configuration".to_string(),
-        );
+        let spec = ToolSpec::new("Test Config".to_string(), "Test configuration".to_string());
 
         assert!(spec.validate().is_ok());
         assert!(spec.is_valid());
@@ -188,10 +189,7 @@ mod tests {
 
     #[test]
     fn test_tool_spec_validation_invalid_type() {
-        let spec = ToolSpec::new(
-            "Test Config".to_string(),
-            "Test configuration".to_string(),
-        );
+        let spec = ToolSpec::new("Test Config".to_string(), "Test configuration".to_string());
         let mut spec = spec;
         spec.spec_type = "invalid".to_string();
 
@@ -201,10 +199,7 @@ mod tests {
 
     #[test]
     fn test_tool_spec_add_property() {
-        let mut spec = ToolSpec::new(
-            "Test Config".to_string(),
-            "Test configuration".to_string(),
-        );
+        let mut spec = ToolSpec::new("Test Config".to_string(), "Test configuration".to_string());
 
         let property = Property {
             property_type: PropertyType::String,
@@ -227,10 +222,7 @@ mod tests {
 
     #[test]
     fn test_tool_spec_add_optional_property() {
-        let mut spec = ToolSpec::new(
-            "Test Config".to_string(),
-            "Test configuration".to_string(),
-        );
+        let mut spec = ToolSpec::new("Test Config".to_string(), "Test configuration".to_string());
 
         let property = Property {
             property_type: PropertyType::String,
@@ -253,10 +245,7 @@ mod tests {
 
     #[test]
     fn test_tool_spec_remove_property() {
-        let mut spec = ToolSpec::new(
-            "Test Config".to_string(),
-            "Test configuration".to_string(),
-        );
+        let mut spec = ToolSpec::new("Test Config".to_string(), "Test configuration".to_string());
 
         let property = Property {
             property_type: PropertyType::String,
@@ -280,10 +269,7 @@ mod tests {
 
     #[test]
     fn test_tool_spec_validation_missing_required() {
-        let mut spec = ToolSpec::new(
-            "Test Config".to_string(),
-            "Test configuration".to_string(),
-        );
+        let mut spec = ToolSpec::new("Test Config".to_string(), "Test configuration".to_string());
 
         // Add a property to required list but not to properties
         spec.required.push("missing_property".to_string());
@@ -293,10 +279,7 @@ mod tests {
 
     #[test]
     fn test_tool_spec_clear_properties() {
-        let mut spec = ToolSpec::new(
-            "Test Config".to_string(),
-            "Test configuration".to_string(),
-        );
+        let mut spec = ToolSpec::new("Test Config".to_string(), "Test configuration".to_string());
 
         let property = Property {
             property_type: PropertyType::String,

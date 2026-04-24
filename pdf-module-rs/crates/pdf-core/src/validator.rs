@@ -53,10 +53,7 @@ impl FileValidator {
         }
 
         // 2. Check extension
-        let ext = file_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
+        let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
         let ext_with_dot = format!(".{}", ext.to_lowercase());
         if !ALLOWED_EXTENSIONS.contains(&ext_with_dot.as_str()) {
             return Err(PdfModuleError::InvalidFileType(format!(
@@ -83,8 +80,9 @@ impl FileValidator {
         }
 
         // 4. Deep file inspection using infer crate
-        let inferred_type = infer::get_from_path(file_path)
-            .map_err(|e| PdfModuleError::CorruptedFile(format!("Cannot read file for sniffing: {}", e)))?;
+        let inferred_type = infer::get_from_path(file_path).map_err(|e| {
+            PdfModuleError::CorruptedFile(format!("Cannot read file for sniffing: {}", e))
+        })?;
 
         match inferred_type {
             Some(t) if t.mime_type() == "application/pdf" => {
@@ -104,8 +102,9 @@ impl FileValidator {
                 let mut file = std::fs::File::open(file_path)
                     .map_err(|e| PdfModuleError::CorruptedFile(e.to_string()))?;
                 let mut header = [0u8; 4];
-                std::io::Read::read_exact(&mut file, &mut header)
-                    .map_err(|e| PdfModuleError::CorruptedFile(format!("Cannot read header: {}", e)))?;
+                std::io::Read::read_exact(&mut file, &mut header).map_err(|e| {
+                    PdfModuleError::CorruptedFile(format!("Cannot read header: {}", e))
+                })?;
                 if &header != b"%PDF" {
                     return Err(PdfModuleError::CorruptedFile(format!(
                         "Not a valid PDF, header: {:?}",
@@ -115,7 +114,7 @@ impl FileValidator {
             }
         }
 
-        FileInfo::from_path(file_path).map_err(|e| PdfModuleError::IoError(e))
+        FileInfo::from_path(file_path).map_err(PdfModuleError::IoError)
     }
 
     /// Validate path safety to prevent path traversal attacks
@@ -133,7 +132,7 @@ impl FileValidator {
                     ));
                 }
             }
-            
+
             // Also check for encoded traversal attempts
             if path_str.contains("..") {
                 return Err(PdfModuleError::InvalidFileType(
@@ -150,10 +149,7 @@ impl FileValidator {
         }
 
         // 3. Check file extension
-        let ext = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
         let ext_with_dot = format!(".{}", ext.to_lowercase());
         if !ALLOWED_EXTENSIONS.contains(&ext_with_dot.as_str()) {
             return Err(PdfModuleError::InvalidFileType(format!(
@@ -164,15 +160,13 @@ impl FileValidator {
 
         // 4. If base_dir is set, verify path is within base directory
         if let Some(base_dir) = &config.base_dir {
-            let canonical_path = path.canonicalize()
-                .map_err(|e| PdfModuleError::FileNotFound(
-                    format!("Cannot resolve path: {}", e)
-                ))?;
-            let canonical_base = base_dir.canonicalize()
-                .map_err(|e| PdfModuleError::InvalidFileType(
-                    format!("Invalid base directory: {}", e)
-                ))?;
-            
+            let canonical_path = path
+                .canonicalize()
+                .map_err(|e| PdfModuleError::FileNotFound(format!("Cannot resolve path: {}", e)))?;
+            let canonical_base = base_dir.canonicalize().map_err(|e| {
+                PdfModuleError::InvalidFileType(format!("Invalid base directory: {}", e))
+            })?;
+
             if !canonical_path.starts_with(&canonical_base) {
                 return Err(PdfModuleError::InvalidFileType(
                     "Path is outside allowed directory".to_string(),

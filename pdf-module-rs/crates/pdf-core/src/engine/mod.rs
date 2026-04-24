@@ -1,12 +1,12 @@
 //! PDF engine abstraction and implementations
 //! Corresponds to Python: adapters/
 
-mod r#trait;
 mod lopdf;
 mod pdf_extract;
 mod pdfium;
+mod r#trait;
 
-pub use r#trait::PdfEngine;
 pub use lopdf::LopdfEngine;
 pub use pdf_extract::PdfExtractEngine;
 pub use pdfium::PdfiumEngine;
+pub use r#trait::PdfEngine;

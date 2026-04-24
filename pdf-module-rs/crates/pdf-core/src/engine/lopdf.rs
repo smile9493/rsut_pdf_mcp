@@ -25,20 +25,20 @@ impl LopdfEngine {
     fn parse_mediabox(doc: &Document, page_obj_id: u32) -> Option<(f64, f64, f64, f64)> {
         // Get the page object
         let page_obj = doc.get_object((page_obj_id, 0)).ok()?;
-        
+
         // Get the page dictionary
         let page_dict = page_obj.as_dict().ok()?;
-        
+
         // Look for MediaBox in the page object
         if let Ok(mediabox) = page_dict.get(b"MediaBox") {
             return Self::parse_bbox_array(mediabox);
         }
-        
+
         // If not found directly, check if there's a Parent and look up the hierarchy
         if let Ok(parent_ref) = page_dict.get(b"Parent") {
             return Self::find_mediabox_in_parent(doc, parent_ref);
         }
-        
+
         // Default A4 size if nothing found
         None
     }
@@ -71,27 +71,30 @@ impl LopdfEngine {
     }
 
     /// Find MediaBox in parent objects (page tree hierarchy)
-    fn find_mediabox_in_parent(doc: &Document, parent_ref: &lopdf::Object) -> Option<(f64, f64, f64, f64)> {
+    fn find_mediabox_in_parent(
+        doc: &Document,
+        parent_ref: &lopdf::Object,
+    ) -> Option<(f64, f64, f64, f64)> {
         // Get the parent object ID from reference
         let parent_id = match parent_ref {
             lopdf::Object::Reference((id, _gen)) => *id,
             _ => return None,
         };
-        
+
         // Get the parent object
         let parent_obj = doc.get_object((parent_id, 0)).ok()?;
         let parent_dict = parent_obj.as_dict().ok()?;
-        
+
         // Check for MediaBox in this parent
         if let Ok(mediabox) = parent_dict.get(b"MediaBox") {
             return Self::parse_bbox_array(mediabox);
         }
-        
+
         // Recursively check parent's parent
         if let Ok(grandparent_ref) = parent_dict.get(b"Parent") {
             return Self::find_mediabox_in_parent(doc, grandparent_ref);
         }
-        
+
         None
     }
 }

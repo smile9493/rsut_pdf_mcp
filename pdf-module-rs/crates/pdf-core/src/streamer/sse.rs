@@ -1,11 +1,9 @@
 //! SSE message streamer implementation
 //! Implements MessageStreamer for Server-Sent Events communication
 
-use crate::dto::{LogLevel, ToolExecutionResult};
 use crate::error::PdfResult;
-use crate::protocol::{ToolDefinition, ToolSpec, RuntimeVariables};
-use crate::streamer::tool_message::ToolMessage;
 use crate::streamer::streamer::MessageStreamer;
+use crate::streamer::tool_message::ToolMessage;
 use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -41,21 +39,22 @@ impl SseMessageStreamer {
 #[async_trait]
 impl MessageStreamer for SseMessageStreamer {
     async fn send(&self, message: ToolMessage) -> PdfResult<()> {
-        let json = serde_json::to_string(&message)
-            .map_err(|e| crate::error::PdfModuleError::MessageSendError(format!(
+        let json = serde_json::to_string(&message).map_err(|e| {
+            crate::error::PdfModuleError::MessageSendError(format!(
                 "Failed to serialize message: {}",
                 e
-            )))?;
+            ))
+        })?;
 
         // Format as SSE event
         let sse_message = format!("data: {}\n\n", json);
 
-        self.sender
-            .send(sse_message)
-            .map_err(|e| crate::error::PdfModuleError::MessageSendError(format!(
+        self.sender.send(sse_message).map_err(|e| {
+            crate::error::PdfModuleError::MessageSendError(format!(
                 "Failed to send message through channel: {}",
                 e
-            )))?;
+            ))
+        })?;
 
         Ok(())
     }
@@ -65,6 +64,7 @@ impl MessageStreamer for SseMessageStreamer {
 mod tests {
     use super::*;
     use crate::dto::LogLevel;
+    use crate::{ToolExecutionResult, ToolSpec, ToolDefinition, RuntimeVariables};
     use tokio::time::{timeout, Duration};
 
     #[tokio::test]
@@ -152,10 +152,7 @@ mod tests {
     async fn test_sse_streamer_send_spec() {
         let (streamer, mut receiver) = SseMessageStreamer::new_channel();
 
-        let spec = ToolSpec::new(
-            "Test Config".to_string(),
-            "Test configuration".to_string(),
-        );
+        let spec = ToolSpec::new("Test Config".to_string(), "Test configuration".to_string());
 
         let result = streamer.send_spec(spec).await;
 
@@ -239,7 +236,9 @@ mod tests {
     async fn test_sse_streamer_send_single_step() {
         let (streamer, mut receiver) = SseMessageStreamer::new_channel();
 
-        let result = streamer.send_single_step("Step 1 completed".to_string()).await;
+        let result = streamer
+            .send_single_step("Step 1 completed".to_string())
+            .await;
 
         assert!(result.is_ok());
 
@@ -257,9 +256,7 @@ mod tests {
 
         // Send multiple messages
         for i in 0..5 {
-            let result = streamer
-                .send_info(format!("Message {}", i))
-                .await;
+            let result = streamer.send_info(format!("Message {}", i)).await;
             assert!(result.is_ok());
         }
 

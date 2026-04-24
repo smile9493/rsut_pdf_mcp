@@ -68,16 +68,16 @@ impl ExtractionCache {
     fn partial_file_hash(file_path: &Path, size: u64) -> PdfResult<String> {
         let mut hasher = Sha256::new();
         let mut file = std::fs::File::open(file_path)?;
-        
+
         // Hash file size first
         hasher.update(size.to_le_bytes());
-        
+
         // Hash first 1MB
         let first_chunk_size = 1024 * 1024;
         let mut buf = vec![0u8; first_chunk_size];
         let n = file.read(&mut buf)?;
         hasher.update(&buf[..n]);
-        
+
         // Hash last 1MB if file is large enough
         if size > first_chunk_size as u64 * 2 {
             let last_chunk_size = 1024 * 1024;
@@ -86,7 +86,7 @@ impl ExtractionCache {
             let n = file.read(&mut buf)?;
             hasher.update(&buf[..n]);
         }
-        
+
         Ok(format!("{:x}", hasher.finalize()))
     }
 
@@ -96,7 +96,7 @@ impl ExtractionCache {
     pub fn file_hash(file_path: &Path) -> PdfResult<String> {
         let metadata = std::fs::metadata(file_path)?;
         let size = metadata.len();
-        
+
         // For small files, use full hash
         if size <= 10 * 1024 * 1024 {
             let mut hasher = Sha256::new();
@@ -122,23 +122,27 @@ impl ExtractionCache {
     /// Optimized: uses file metadata (mtime + size) as fast key component
     fn make_key(&self, file_path: &Path, adapter: &str, kwargs: &str) -> PdfResult<String> {
         let metadata = Self::get_file_metadata(file_path)?;
-        
+
         // Use metadata as part of cache key for fast lookup
         // This avoids computing full hash for unchanged files
-        let mtime = metadata.modified.duration_since(SystemTime::UNIX_EPOCH)
+        let mtime = metadata
+            .modified
+            .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_else(|_| Duration::from_secs(0))
             .as_secs();
-        
+
         // For small files, use metadata-based key (very fast)
         // For large files, combine metadata with partial hash
         if metadata.size <= self.full_hash_threshold {
             // Fast path: metadata only
-            Ok(format!("{}|{}|{}|{}|{}", 
-                file_path.display(), 
-                mtime, 
-                metadata.size, 
-                adapter, 
-                kwargs))
+            Ok(format!(
+                "{}|{}|{}|{}|{}",
+                file_path.display(),
+                mtime,
+                metadata.size,
+                adapter,
+                kwargs
+            ))
         } else {
             // Large file: metadata + partial hash for better uniqueness
             let hash = Self::partial_file_hash(file_path, metadata.size)?;
@@ -173,7 +177,12 @@ impl ExtractionCache {
 
     /// Set cached result
     /// Corresponds to Python: ExtractionCache.set()
-    pub fn set<T: serde::Serialize>(&self, file_path: &Path, adapter: &str, result: &T) -> PdfResult<()> {
+    pub fn set<T: serde::Serialize>(
+        &self,
+        file_path: &Path,
+        adapter: &str,
+        result: &T,
+    ) -> PdfResult<()> {
         let key = self.make_key(file_path, adapter, "")?;
         let json = serde_json::to_string(result)
             .map_err(|e| crate::error::PdfModuleError::Extraction(e.to_string()))?;

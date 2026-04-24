@@ -1,14 +1,14 @@
 //! File storage factory
 //! Provides factory methods to create different file storage implementations
 
-use crate::dto::{LocalStorageConfig, S3StorageConfig, GCSStorageConfig, AzureStorageConfig, StorageType};
+use crate::dto::{
+    AzureStorageConfig, GCSStorageConfig, LocalStorageConfig, S3StorageConfig, StorageType,
+};
 use crate::error::{PdfModuleError, PdfResult};
 use crate::storage::file_storage::{FileStorage, FileStorageConfig};
 use crate::storage::local_storage::LocalFileStorage;
-#[cfg(feature = "s3")]
-use crate::storage::s3_storage::S3FileStorage;
-use std::sync::Arc;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// File storage factory
 /// Provides methods to create different file storage implementations
@@ -25,52 +25,52 @@ impl FileStorageFactory {
                     PdfModuleError::ConfigError("Local storage config is required".to_string())
                 })?;
                 Self::create_local(&local_config)
-            },
+            }
             StorageType::S3 => {
                 let s3_config = config.s3.ok_or_else(|| {
                     PdfModuleError::ConfigError("S3 storage config is required".to_string())
                 })?;
                 Self::create_s3(&s3_config)
-            },
+            }
             StorageType::Gcs => {
                 let gcs_config = config.gcs.ok_or_else(|| {
                     PdfModuleError::ConfigError("GCS storage config is required".to_string())
                 })?;
                 Self::create_gcs(&gcs_config)
-            },
+            }
             StorageType::AzureBlob => {
                 let azure_config = config.azure.ok_or_else(|| {
                     PdfModuleError::ConfigError("Azure storage config is required".to_string())
                 })?;
                 Self::create_azure(&azure_config)
-            },
-            _ => Err(PdfModuleError::ConfigError(
-                format!("Unsupported storage type: {:?}", config.storage_type)
-            )),
+            }
+            _ => Err(PdfModuleError::ConfigError(format!(
+                "Unsupported storage type: {:?}",
+                config.storage_type
+            ))),
         }
     }
 
     /// Create a local file storage
     pub fn create_local(config: &LocalStorageConfig) -> PdfResult<Arc<dyn FileStorage>> {
         let base_dir = PathBuf::from(&config.base_dir);
-        
+
         // Create base directory if it doesn't exist
         if !base_dir.exists() {
-            std::fs::create_dir_all(&base_dir)
-                .map_err(|e| PdfModuleError::StorageError(
-                    format!("Failed to create base directory: {}", e)
-                ))?;
+            std::fs::create_dir_all(&base_dir).map_err(|e| {
+                PdfModuleError::StorageError(format!("Failed to create base directory: {}", e))
+            })?;
         }
 
         Ok(Arc::new(LocalFileStorage::new(base_dir)))
     }
 
     /// Create an S3 file storage
-    pub fn create_s3(config: &S3StorageConfig) -> PdfResult<Arc<dyn FileStorage>> {
+    pub fn create_s3(_config: &S3StorageConfig) -> PdfResult<Arc<dyn FileStorage>> {
         // Placeholder implementation
         // Would use aws-sdk-s3 and aws-config crates
         Err(PdfModuleError::StorageError(
-            "S3 storage is not yet implemented".to_string()
+            "S3 storage is not yet implemented".to_string(),
         ))
     }
 
@@ -79,7 +79,7 @@ impl FileStorageFactory {
         // Placeholder implementation
         // Would use google-cloud-storage crate
         Err(PdfModuleError::StorageError(
-            "GCS storage is not yet implemented".to_string()
+            "GCS storage is not yet implemented".to_string(),
         ))
     }
 
@@ -88,7 +88,7 @@ impl FileStorageFactory {
         // Placeholder implementation
         // Would use azure_storage_blobs crate
         Err(PdfModuleError::StorageError(
-            "Azure Blob storage is not yet implemented".to_string()
+            "Azure Blob storage is not yet implemented".to_string(),
         ))
     }
 
@@ -102,16 +102,17 @@ impl FileStorageFactory {
 
         match storage_type.as_str() {
             "local" => {
-                let base_dir = env::var("STORAGE_LOCAL_DIR")
-                    .unwrap_or_else(|_| "./data".to_string());
+                let base_dir =
+                    env::var("STORAGE_LOCAL_DIR").unwrap_or_else(|_| "./data".to_string());
                 let config = LocalStorageConfig { base_dir };
                 Self::create_local(&config)
-            },
+            }
             "s3" => {
-                let bucket = env::var("STORAGE_S3_BUCKET")
-                    .map_err(|_| PdfModuleError::ConfigError("STORAGE_S3_BUCKET is required".to_string()))?;
-                let region = env::var("STORAGE_S3_REGION")
-                    .unwrap_or_else(|_| "us-east-1".to_string());
+                let bucket = env::var("STORAGE_S3_BUCKET").map_err(|_| {
+                    PdfModuleError::ConfigError("STORAGE_S3_BUCKET is required".to_string())
+                })?;
+                let region =
+                    env::var("STORAGE_S3_REGION").unwrap_or_else(|_| "us-east-1".to_string());
                 let prefix = env::var("STORAGE_S3_PREFIX").ok();
                 let access_key = env::var("STORAGE_S3_ACCESS_KEY").ok();
                 let secret_key = env::var("STORAGE_S3_SECRET_KEY").ok();
@@ -127,12 +128,16 @@ impl FileStorageFactory {
                 };
 
                 Self::create_s3(&config)
-            },
+            }
             "gcs" => {
-                let bucket = env::var("STORAGE_GCS_BUCKET")
-                    .map_err(|_| PdfModuleError::ConfigError("STORAGE_GCS_BUCKET is required".to_string()))?;
-                let credentials_path = env::var("STORAGE_GCS_CREDENTIALS_PATH")
-                    .map_err(|_| PdfModuleError::ConfigError("STORAGE_GCS_CREDENTIALS_PATH is required".to_string()))?;
+                let bucket = env::var("STORAGE_GCS_BUCKET").map_err(|_| {
+                    PdfModuleError::ConfigError("STORAGE_GCS_BUCKET is required".to_string())
+                })?;
+                let credentials_path = env::var("STORAGE_GCS_CREDENTIALS_PATH").map_err(|_| {
+                    PdfModuleError::ConfigError(
+                        "STORAGE_GCS_CREDENTIALS_PATH is required".to_string(),
+                    )
+                })?;
 
                 let config = GCSStorageConfig {
                     bucket,
@@ -140,14 +145,17 @@ impl FileStorageFactory {
                 };
 
                 Self::create_gcs(&config)
-            },
+            }
             "azure" => {
-                let account = env::var("STORAGE_AZURE_ACCOUNT")
-                    .map_err(|_| PdfModuleError::ConfigError("STORAGE_AZURE_ACCOUNT is required".to_string()))?;
-                let key = env::var("STORAGE_AZURE_KEY")
-                    .map_err(|_| PdfModuleError::ConfigError("STORAGE_AZURE_KEY is required".to_string()))?;
-                let container = env::var("STORAGE_AZURE_CONTAINER")
-                    .map_err(|_| PdfModuleError::ConfigError("STORAGE_AZURE_CONTAINER is required".to_string()))?;
+                let account = env::var("STORAGE_AZURE_ACCOUNT").map_err(|_| {
+                    PdfModuleError::ConfigError("STORAGE_AZURE_ACCOUNT is required".to_string())
+                })?;
+                let key = env::var("STORAGE_AZURE_KEY").map_err(|_| {
+                    PdfModuleError::ConfigError("STORAGE_AZURE_KEY is required".to_string())
+                })?;
+                let container = env::var("STORAGE_AZURE_CONTAINER").map_err(|_| {
+                    PdfModuleError::ConfigError("STORAGE_AZURE_CONTAINER is required".to_string())
+                })?;
 
                 let config = AzureStorageConfig {
                     account,
@@ -156,10 +164,11 @@ impl FileStorageFactory {
                 };
 
                 Self::create_azure(&config)
-            },
-            _ => Err(PdfModuleError::ConfigError(
-                format!("Unsupported storage type: {}", storage_type)
-            )),
+            }
+            _ => Err(PdfModuleError::ConfigError(format!(
+                "Unsupported storage type: {}",
+                storage_type
+            ))),
         }
     }
 }
@@ -190,7 +199,7 @@ mod tests {
         };
 
         assert!(!base_dir.exists());
-        
+
         let storage = FileStorageFactory::create_local(&config);
         assert!(storage.is_ok());
         assert!(base_dir.exists());

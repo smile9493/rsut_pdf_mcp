@@ -2,17 +2,23 @@
 //! Manages tool registration, discovery, and execution
 
 use crate::error::{PdfModuleError, PdfResult};
-use crate::plugin::tool_handler::{ToolHandler, ToolContext, ToolExecutionOptions};
+use crate::plugin::tool_handler::{ToolContext, ToolExecutionOptions, ToolHandler};
+use crate::plugin::PluginRegistry;
 use crate::protocol::ToolDefinition;
+use async_trait::async_trait;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use serde_json::Value;
 
 /// Tool registry
 /// Manages tool registration, discovery, and execution
 pub struct ToolRegistry {
     tools: RwLock<HashMap<String, Arc<dyn ToolHandler>>>,
+    /// Category index: category -> tool names
+    categories: RwLock<HashMap<String, Vec<String>>>,
+    /// Capability index: capability -> tool names
+    capabilities: RwLock<HashMap<String, Vec<String>>>,
 }
 
 impl ToolRegistry {
@@ -20,19 +26,40 @@ impl ToolRegistry {
     pub fn new() -> Self {
         Self {
             tools: RwLock::new(HashMap::new()),
+            categories: RwLock::new(HashMap::new()),
+            capabilities: RwLock::new(HashMap::new()),
         }
     }
 
     /// Register a tool
     pub async fn register(&self, tool: Arc<dyn ToolHandler>) -> PdfResult<()> {
         let name = tool.name().to_string();
-        let mut tools = self.tools.write().await;
         
+        // Call lifecycle hook
+        tool.on_register().await?;
+        
+        let mut tools = self.tools.write().await;
+
         if tools.contains_key(&name) {
-            return Err(PdfModuleError::ToolRegistrationError(format!(
-                "Tool '{}' is already registered",
-                name
-            )));
+            return Err(PdfModuleError::ToolAlreadyRegistered(name));
+        }
+
+        // Update category index
+        let category = tool.category();
+        let mut categories = self.categories.write().await;
+        categories
+            .entry(category)
+            .or_insert_with(Vec::new)
+            .push(name.clone());
+
+        // Update capability index
+        let tool_capabilities = tool.capabilities();
+        let mut capabilities = self.capabilities.write().await;
+        for cap in tool_capabilities {
+            capabilities
+                .entry(cap)
+                .or_insert_with(Vec::new)
+                .push(name.clone());
         }
 
         tools.insert(name.clone(), tool);
@@ -42,28 +69,40 @@ impl ToolRegistry {
     /// Unregister a tool
     pub async fn unregister(&self, name: &str) -> PdfResult<()> {
         let mut tools = self.tools.write().await;
-        
-        if !tools.contains_key(name) {
-            return Err(PdfModuleError::ToolNotFound(format!(
-                "Tool '{}' is not registered",
-                name
-            )));
+
+        let tool = tools.remove(name).ok_or_else(|| {
+            PdfModuleError::ToolNotFound(format!("Tool '{}' is not registered", name))
+        })?;
+
+        // Call lifecycle hook
+        tool.on_unregister().await?;
+
+        // Clean up category index
+        let category = tool.category();
+        let mut categories = self.categories.write().await;
+        if let Some(tool_names) = categories.get_mut(&category) {
+            tool_names.retain(|n| n != name);
         }
 
-        tools.remove(name);
+        // Clean up capability index
+        let tool_capabilities = tool.capabilities();
+        let mut capabilities = self.capabilities.write().await;
+        for cap in tool_capabilities {
+            if let Some(tool_names) = capabilities.get_mut(&cap) {
+                tool_names.retain(|n| n != name);
+            }
+        }
+
         Ok(())
     }
 
     /// Get a tool by name
     pub async fn get(&self, name: &str) -> PdfResult<Arc<dyn ToolHandler>> {
         let tools = self.tools.read().await;
-        
-        tools.get(name)
-            .cloned()
-            .ok_or_else(|| PdfModuleError::ToolNotFound(format!(
-                "Tool '{}' is not registered",
-                name
-            )))
+
+        tools.get(name).cloned().ok_or_else(|| {
+            PdfModuleError::ToolNotFound(format!("Tool '{}' is not registered", name))
+        })
     }
 
     /// Check if a tool is registered
@@ -81,7 +120,8 @@ impl ToolRegistry {
     /// Get all tool definitions
     pub async fn list_definitions(&self) -> Vec<ToolDefinition> {
         let tools = self.tools.read().await;
-        tools.values()
+        tools
+            .values()
             .map(|tool| tool.definition().clone())
             .collect()
     }
@@ -91,12 +131,12 @@ impl ToolRegistry {
         &self,
         name: &str,
         params: HashMap<String, Value>,
-        context: Option<ToolContext>,
+        _context: Option<ToolContext>,
         _options: Option<ToolExecutionOptions>,
         streamer: Option<&mut dyn crate::streamer::MessageStreamer>,
     ) -> PdfResult<crate::dto::ToolExecutionResult> {
         let tool = self.get(name).await?;
-        
+
         // Validate parameters
         tool.validate_params(&params)?;
 
@@ -121,6 +161,82 @@ impl ToolRegistry {
         let tools = self.tools.read().await;
         tools.is_empty()
     }
+
+    /// Query tools by capability
+    pub async fn query_by_capability(&self, capability: &str) -> Vec<ToolDefinition> {
+        let capabilities = self.capabilities.read().await;
+        let tools = self.tools.read().await;
+
+        capabilities
+            .get(capability)
+            .map(|names| {
+                names
+                    .iter()
+                    .filter_map(|name| tools.get(name).map(|t| t.definition().clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Query tools by category
+    pub async fn query_by_category(&self, category: &str) -> Vec<ToolDefinition> {
+        let categories = self.categories.read().await;
+        let tools = self.tools.read().await;
+
+        categories
+            .get(category)
+            .map(|names| {
+                names
+                    .iter()
+                    .filter_map(|name| tools.get(name).map(|t| t.definition().clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+}
+
+/// Implement PluginRegistry trait for ToolRegistry
+#[async_trait]
+impl PluginRegistry for ToolRegistry {
+    async fn register(&self, tool: Arc<dyn ToolHandler>) -> PdfResult<()> {
+        Self::register(self, tool).await
+    }
+
+    async fn unregister(&self, name: &str) -> PdfResult<()> {
+        Self::unregister(self, name).await
+    }
+
+    async fn get(&self, name: &str) -> PdfResult<Arc<dyn ToolHandler>> {
+        Self::get(self, name).await
+    }
+
+    async fn is_registered(&self, name: &str) -> bool {
+        Self::is_registered(self, name).await
+    }
+
+    async fn list_tools(&self) -> Vec<String> {
+        Self::list_tools(self).await
+    }
+
+    async fn list_definitions(&self) -> Vec<ToolDefinition> {
+        Self::list_definitions(self).await
+    }
+
+    async fn query_by_capability(&self, capability: &str) -> Vec<ToolDefinition> {
+        Self::query_by_capability(self, capability).await
+    }
+
+    async fn query_by_category(&self, category: &str) -> Vec<ToolDefinition> {
+        Self::query_by_category(self, category).await
+    }
+
+    async fn count(&self) -> usize {
+        Self::count(self).await
+    }
+
+    async fn clear(&self) {
+        Self::clear(self).await
+    }
 }
 
 impl Default for ToolRegistry {
@@ -132,11 +248,10 @@ impl Default for ToolRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dto::{Parameter, ParameterType, InputType, OutputType};
-    use crate::protocol::{ToolDefinition, ToolSpec, RuntimeVariables};
+    use crate::dto::{InputType, OutputType};
     use crate::plugin::tool_handler::ToolHandler;
+    use crate::protocol::{RuntimeVariables, ToolDefinition, ToolSpec};
     use async_trait::async_trait;
-    use crate::dto::ExecutionMetadata;
 
     // Mock tool handler for testing
     struct MockToolHandler {
@@ -157,15 +272,10 @@ mod tests {
                 OutputType::File,
             );
 
-            let spec = ToolSpec::new(
-                name.to_string(),
-                "test".to_string(),
-            );
+            let spec = ToolSpec::new(name.to_string(), "test".to_string());
 
-            let variables = RuntimeVariables::new(
-                "Test Variables".to_string(),
-                "Test Description".to_string(),
-            );
+            let variables =
+                RuntimeVariables::new("Test Variables".to_string(), "Test Description".to_string());
 
             Self {
                 name: name.to_string(),
@@ -277,7 +387,7 @@ mod tests {
     #[tokio::test]
     async fn test_tool_registry_list_tools() {
         let registry = ToolRegistry::new();
-        
+
         let tool1 = Arc::new(MockToolHandler::new("tool1"));
         let tool2 = Arc::new(MockToolHandler::new("tool2"));
 
@@ -293,7 +403,7 @@ mod tests {
     #[tokio::test]
     async fn test_tool_registry_list_definitions() {
         let registry = ToolRegistry::new();
-        
+
         let tool1 = Arc::new(MockToolHandler::new("tool1"));
         let tool2 = Arc::new(MockToolHandler::new("tool2"));
 
@@ -302,8 +412,11 @@ mod tests {
 
         let definitions = registry.list_definitions().await;
         assert_eq!(definitions.len(), 2);
-        
-        let names: Vec<&str> = definitions.iter().map(|d| d.function_name.as_str()).collect();
+
+        let names: Vec<&str> = definitions
+            .iter()
+            .map(|d| d.function_name.as_str())
+            .collect();
         assert!(names.contains(&"tool1"));
         assert!(names.contains(&"tool2"));
     }
@@ -316,7 +429,10 @@ mod tests {
         registry.register(tool).await.unwrap();
 
         let params = HashMap::new();
-        let result = registry.execute("test_tool", params, None, None, None).await.unwrap();
+        let result = registry
+            .execute("test_tool", params, None, None, None)
+            .await
+            .unwrap();
         assert_eq!(result.workflow_id, "test-workflow");
         assert!(result.output.get("result").is_some());
     }
@@ -324,7 +440,7 @@ mod tests {
     #[tokio::test]
     async fn test_tool_registry_clear() {
         let registry = ToolRegistry::new();
-        
+
         let tool1 = Arc::new(MockToolHandler::new("tool1"));
         let tool2 = Arc::new(MockToolHandler::new("tool2"));
 

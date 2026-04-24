@@ -89,6 +89,7 @@ cache/
 
 # ==================== Build Artifacts ====================
 *.pdf
+*.PDF
 !docs/*.pdf
 *.zip
 *.tar.gz

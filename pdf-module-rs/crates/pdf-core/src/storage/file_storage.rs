@@ -120,37 +120,33 @@ impl FileStorageConfig {
     /// Validate the configuration
     pub fn validate(&self) -> PdfResult<()> {
         match self.storage_type {
-            StorageType::Local => {
-                if self.local.is_none() {
+            StorageType::Local
+                if self.local.is_none() => {
                     return Err(PdfModuleError::ConfigError(
                         "Local storage config is required for local storage type".to_string(),
                     ));
                 }
-            },
-            StorageType::S3 => {
-                if self.s3.is_none() {
+            StorageType::S3
+                if self.s3.is_none() => {
                     return Err(PdfModuleError::ConfigError(
                         "S3 storage config is required for S3 storage type".to_string(),
                     ));
                 }
-            },
-            StorageType::Gcs => {
-                if self.gcs.is_none() {
+            StorageType::Gcs
+                if self.gcs.is_none() => {
                     return Err(PdfModuleError::ConfigError(
                         "GCS storage config is required for GCS storage type".to_string(),
                     ));
                 }
-            },
-            StorageType::AzureBlob => {
-                if self.azure.is_none() {
+            StorageType::AzureBlob
+                if self.azure.is_none() => {
                     return Err(PdfModuleError::ConfigError(
                         "Azure storage config is required for Azure storage type".to_string(),
                     ));
                 }
-            },
             _ => {
                 // Other storage types may not require config
-            },
+            }
         }
         Ok(())
     }

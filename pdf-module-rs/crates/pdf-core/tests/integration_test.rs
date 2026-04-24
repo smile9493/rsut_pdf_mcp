@@ -1,19 +1,17 @@
 //! Integration tests for pdf-module-rs
 //! Tests the complete workflow of PDF extraction with all components
 
+use async_trait::async_trait;
 use pdf_core::{
-    ToolRegistry, ToolHandler,
-    FileStorageFactory, FileStorage, ExtractionAudit, AuditService, AuditBackend,
-    ToolDefinition, ToolSpec, RuntimeVariables, InputType, OutputType,
-    ExtractionStatus,
-    MessageStreamer, ToolExecutionResult, ExecutionMetadata, LocalFileStorage,
+    AuditBackend, AuditService, ExecutionMetadata, ExtractionAudit, ExtractionStatus, FileStorage,
+    InputType, LocalFileStorage, MessageStreamer, OutputType, RuntimeVariables,
+    ToolDefinition, ToolExecutionResult, ToolHandler, ToolRegistry, ToolSpec,
 };
+use serde_json::Value;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::fs;
-use std::collections::HashMap;
-use serde_json::Value;
-use async_trait::async_trait;
 
 #[tokio::test]
 async fn test_complete_workflow() {
@@ -24,7 +22,9 @@ async fn test_complete_workflow() {
 
     // Initialize audit service
     let audit_service = Arc::new(AuditService::new(
-        AuditBackend::File { log_dir: test_audit_dir.clone() },
+        AuditBackend::File {
+            log_dir: test_audit_dir.clone(),
+        },
         30,
     ));
 
@@ -45,7 +45,11 @@ async fn test_complete_workflow() {
     tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
     // Verify audit file was created
-    let date = chrono::Utc::now().naive_utc().date().format("%Y-%m-%d").to_string();
+    let date = chrono::Utc::now()
+        .naive_utc()
+        .date()
+        .format("%Y-%m-%d")
+        .to_string();
     let audit_filename = format!("audit_{}.jsonl", date);
     let audit_filepath = test_audit_dir.join(audit_filename);
     assert!(audit_filepath.exists());
@@ -74,15 +78,10 @@ async fn tool_registration_workflow() {
                 OutputType::File,
             );
 
-            let spec = ToolSpec::new(
-                name.to_string(),
-                "test".to_string(),
-            );
+            let spec = ToolSpec::new(name.to_string(), "test".to_string());
 
-            let variables = RuntimeVariables::new(
-                "Test Variables".to_string(),
-                "Test Description".to_string(),
-            );
+            let variables =
+                RuntimeVariables::new("Test Variables".to_string(), "Test Description".to_string());
 
             Self {
                 name: name.to_string(),
@@ -157,7 +156,10 @@ async fn tool_registration_workflow() {
 
     // Execute tool
     let params = HashMap::new();
-    let result = registry.execute("test_tool", params, None, None, None).await.unwrap();
+    let result = registry
+        .execute("test_tool", params, None, None, None)
+        .await
+        .unwrap();
     assert_eq!(result.workflow_id, "test-workflow");
 
     // Unregister tool
@@ -175,7 +177,7 @@ async fn test_storage_operations() {
     // Test write and read
     let data = b"Hello, World!";
     storage.write("test.txt", data).await.unwrap();
-    
+
     let read_data = storage.read("test.txt").await.unwrap();
     assert_eq!(read_data.as_ref(), data);
 
@@ -191,7 +193,7 @@ async fn test_storage_operations() {
     // Test list
     storage.write("file1.txt", b"test1").await.unwrap();
     storage.write("file2.txt", b"test2").await.unwrap();
-    
+
     let files = storage.list(".", false).await.unwrap();
     assert_eq!(files.len(), 3); // test.txt + file1.txt + file2.txt
 

@@ -161,6 +161,7 @@ pub enum InputType {
     File,
     Database,
     Index,
+    Text,
 }
 
 /// Output type
@@ -170,6 +171,8 @@ pub enum OutputType {
     File,
     Database,
     Index,
+    Text,
+    Json,
 }
 
 /// Resource requirement
@@ -349,6 +352,111 @@ pub enum LogOutput {
     Stdout,
     File { path: String },
     Syslog,
+}
+
+// === Plugin Architecture DTOs ===
+
+/// Plugin type enumeration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PluginType {
+    Local,
+    Remote,
+    Wasm,
+}
+
+/// Retry policy configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetryPolicy {
+    pub max_retries: u32,
+    pub initial_delay_ms: u64,
+    pub max_delay_ms: u64,
+    pub multiplier: f64,
+}
+
+/// Rate limit configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RateLimitConfig {
+    pub requests_per_second: u32,
+    pub burst_size: u32,
+}
+
+/// Plugin configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginConfig {
+    pub plugin_id: String,
+    pub plugin_type: PluginType,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub priority: i32,
+    #[serde(default = "default_timeout")]
+    pub timeout_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_policy: Option<RetryPolicy>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rate_limit: Option<RateLimitConfig>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_timeout() -> u64 {
+    30000
+}
+
+/// Execution status enumeration
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionStatus {
+    Success,
+    Failed,
+    Timeout,
+    Cancelled,
+}
+
+/// Execution metric
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionMetric {
+    pub tool_name: String,
+    pub execution_id: String,
+    pub start_time: chrono::DateTime<chrono::Utc>,
+    pub end_time: chrono::DateTime<chrono::Utc>,
+    pub status: ExecutionStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+}
+
+/// Tool execution context
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolContext {
+    pub execution_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub org_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflow_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
+    #[serde(default)]
+    pub metadata: std::collections::HashMap<String, String>,
+}
+
+/// Tool execution options
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolExecutionOptions {
+    #[serde(default)]
+    pub enable_streaming: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<u64>,
+    #[serde(default = "default_true")]
+    pub enable_cache: bool,
+    #[serde(default = "default_true")]
+    pub enable_metrics: bool,
+    #[serde(default)]
+    pub additional: std::collections::HashMap<String, serde_json::Value>,
 }
 
 #[cfg(test)]
