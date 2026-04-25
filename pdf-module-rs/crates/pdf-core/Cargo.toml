@@ -22,6 +22,9 @@ tracing-subscriber = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 
+# 内部 crate
+pdf-common = { workspace = true }
+
 # PDF 引擎
 lopdf = { workspace = true }
 pdf-extract = { workspace = true }

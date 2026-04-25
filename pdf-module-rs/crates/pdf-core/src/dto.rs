@@ -428,36 +428,8 @@ pub struct ExecutionMetric {
     pub error_message: Option<String>,
 }
 
-/// Tool execution context
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolContext {
-    pub execution_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub org_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub workflow_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub user_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub request_id: Option<String>,
-    #[serde(default)]
-    pub metadata: std::collections::HashMap<String, String>,
-}
-
-/// Tool execution options
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolExecutionOptions {
-    #[serde(default)]
-    pub enable_streaming: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timeout: Option<u64>,
-    #[serde(default = "default_true")]
-    pub enable_cache: bool,
-    #[serde(default = "default_true")]
-    pub enable_metrics: bool,
-    #[serde(default)]
-    pub additional: std::collections::HashMap<String, serde_json::Value>,
-}
+// Re-export unified ToolContext and ToolExecutionOptions from pdf-common (single source of truth).
+pub use pdf_common::dto::{ToolContext, ToolExecutionOptions};
 
 #[cfg(test)]
 mod tests {

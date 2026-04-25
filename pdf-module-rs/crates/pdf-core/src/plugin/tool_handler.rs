@@ -1,5 +1,9 @@
 //! Tool handler trait
 //! Defines the interface for tool execution and management
+//!
+//! `ToolContext` and `ToolExecutionOptions` are re-exported from `pdf_common`
+//! (unified source of truth). Only the `ToolHandler` trait remains defined here
+//! as it depends on pdf-core-specific protocol types.
 
 use crate::dto::{ExecutionMetadata, ToolExecutionResult};
 use crate::error::PdfResult;
@@ -8,6 +12,9 @@ use crate::streamer::MessageStreamer;
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
+
+// Re-export unified types from pdf-common (single source of truth).
+pub use pdf_common::dto::{ToolContext, ToolExecutionOptions};
 
 /// Tool handler trait
 /// Defines the interface for tool execution and lifecycle management
@@ -81,139 +88,18 @@ pub trait ToolHandler: Send + Sync {
     }
 }
 
-/// Tool context
-/// Provides context information for tool execution
-#[derive(Debug, Clone)]
-pub struct ToolContext {
-    /// Tool execution ID
-    pub execution_id: String,
-    /// Organization ID
-    pub org_id: Option<String>,
-    /// Workflow ID
-    pub workflow_id: Option<String>,
-    /// User ID
-    pub user_id: Option<String>,
-    /// Request ID
-    pub request_id: Option<String>,
-    /// Additional metadata
-    pub metadata: HashMap<String, String>,
-}
-
-impl ToolContext {
-    /// Create a new tool context
-    pub fn new(execution_id: String) -> Self {
-        Self {
-            execution_id,
-            org_id: None,
-            workflow_id: None,
-            user_id: None,
-            request_id: None,
-            metadata: HashMap::new(),
-        }
-    }
-
-    /// Set organization ID
-    pub fn with_org_id(mut self, org_id: String) -> Self {
-        self.org_id = Some(org_id);
-        self
-    }
-
-    /// Set workflow ID
-    pub fn with_workflow_id(mut self, workflow_id: String) -> Self {
-        self.workflow_id = Some(workflow_id);
-        self
-    }
-
-    /// Set user ID
-    pub fn with_user_id(mut self, user_id: String) -> Self {
-        self.user_id = Some(user_id);
-        self
-    }
-
-    /// Set request ID
-    pub fn with_request_id(mut self, request_id: String) -> Self {
-        self.request_id = Some(request_id);
-        self
-    }
-
-    /// Add metadata
-    pub fn with_metadata(mut self, key: String, value: String) -> Self {
-        self.metadata.insert(key, value);
-        self
-    }
-}
-
-/// Tool execution options
-#[derive(Debug, Clone)]
-pub struct ToolExecutionOptions {
-    /// Enable streaming
-    pub enable_streaming: bool,
-    /// Timeout in seconds
-    pub timeout: Option<u64>,
-    /// Enable caching
-    pub enable_cache: bool,
-    /// Enable metrics
-    pub enable_metrics: bool,
-    /// Additional options
-    pub additional: HashMap<String, Value>,
-}
-
-impl Default for ToolExecutionOptions {
-    fn default() -> Self {
-        Self {
-            enable_streaming: false,
-            timeout: None,
-            enable_cache: true,
-            enable_metrics: true,
-            additional: HashMap::new(),
-        }
-    }
-}
-
-impl ToolExecutionOptions {
-    /// Enable streaming
-    pub fn with_streaming(mut self) -> Self {
-        self.enable_streaming = true;
-        self
-    }
-
-    /// Set timeout
-    pub fn with_timeout(mut self, timeout: u64) -> Self {
-        self.timeout = Some(timeout);
-        self
-    }
-
-    /// Disable caching
-    pub fn without_cache(mut self) -> Self {
-        self.enable_cache = false;
-        self
-    }
-
-    /// Disable metrics
-    pub fn without_metrics(mut self) -> Self {
-        self.enable_metrics = false;
-        self
-    }
-
-    /// Add additional option
-    pub fn with_option(mut self, key: String, value: Value) -> Self {
-        self.additional.insert(key, value);
-        self
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_tool_context_builder() {
-        let context = ToolContext::new("exec-123".to_string())
-            .with_org_id("org-456".to_string())
-            .with_workflow_id("workflow-789".to_string())
-            .with_user_id("user-101".to_string())
-            .with_request_id("req-202".to_string())
-            .with_metadata("key1".to_string(), "value1".to_string());
+        let context = ToolContext::new("exec-123")
+            .with_org_id("org-456")
+            .with_workflow_id("workflow-789")
+            .with_user_id("user-101")
+            .with_request_id("req-202")
+            .with_metadata("key1", "value1");
 
         assert_eq!(context.execution_id, "exec-123");
         assert_eq!(context.org_id, Some("org-456".to_string()));
@@ -240,7 +126,7 @@ mod tests {
             .with_timeout(60)
             .without_cache()
             .without_metrics()
-            .with_option("custom_key".to_string(), serde_json::json!("custom_value"));
+            .with_option("custom_key", serde_json::json!("custom_value"));
 
         assert!(options.enable_streaming);
         assert_eq!(options.timeout, Some(60));

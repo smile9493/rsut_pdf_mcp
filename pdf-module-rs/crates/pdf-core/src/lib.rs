@@ -6,6 +6,7 @@
 pub mod audit;
 pub mod cache;
 pub mod config;
+pub mod container;
 pub mod control;
 pub mod database;
 pub mod dto;
@@ -23,6 +24,7 @@ pub mod validator;
 pub use audit::{AuditBackend, AuditFilters, AuditFiltersBuilder, AuditLog, AuditService, ExtractionAudit};
 pub use cache::ExtractionCache;
 pub use config::ServerConfig;
+pub use container::ServiceContainer;
 pub use control::{
     AuditLogger, CircuitBreaker, CircuitBreakerConfig, CircuitState, ControlPlane, HealthStatus,
     MetricsCollector, MetricsSnapshot, RateLimitStats, RateLimiter, SchemaDefinition,
@@ -37,7 +39,7 @@ pub use keyword::KeywordExtractor;
 pub use plugin::{
     CompileTimeDiscovery, DispatchRequest, DispatchResult, DiscoveryConfig, DynamicDiscovery,
     MetadataCache, CacheStats, PluginRegistry, RuntimeDiscovery,
-    ToolContext, ToolExecutionOptions, ToolHandler, ToolDispatcher, ToolRegistration, ToolRegistry,
+    ToolHandler, ToolDispatcher, ToolRegistration, ToolRegistry,
     UnifiedDiscovery, UnifiedDiscoveryConfig,
 };
 pub use protocol::{RuntimeVariables, ToolDefinition, ToolSpec};
@@ -48,3 +50,7 @@ pub use streamer::{
     MessageStreamer, NoOpMessageStreamer, SseMessageStreamer, StdioMessageStreamer, ToolMessage,
 };
 pub use validator::{FileValidator, PathValidationConfig};
+
+// Re-export pdf-common for unified types accessible through pdf-core
+pub use pdf_common;
+pub use pdf_common::PdfError as UnifiedPdfError;

@@ -167,6 +167,84 @@ impl PdfModuleError {
 /// Result type alias for PDF module operations
 pub type PdfResult<T> = Result<T, PdfModuleError>;
 
+impl PdfModuleError {
+    /// Convert this legacy error into the unified `pdf_common::PdfError`.
+    ///
+    /// This enables gradual migration: existing code continues to use
+    /// `PdfModuleError` while new code can accept `PdfError`.
+    pub fn into_unified(self) -> pdf_common::PdfError {
+        match self {
+            Self::FileNotFound(s) => pdf_common::PdfError::FileNotFound(s),
+            Self::InvalidFileType(s) => pdf_common::PdfError::InvalidFileType(s),
+            Self::FileTooLarge(s) => pdf_common::PdfError::FileTooLarge(s),
+            Self::Extraction(s) => pdf_common::PdfError::Extraction(s),
+            Self::AdapterNotFound(s) => pdf_common::PdfError::AdapterNotFound(s),
+            Self::CorruptedFile(s) => pdf_common::PdfError::CorruptedFile(s),
+            Self::IoError(e) => pdf_common::PdfError::Io(e),
+            Self::ToolRegistrationError(s) => pdf_common::PdfError::ToolRegistration(s),
+            Self::ToolExecutionError(s) => pdf_common::PdfError::ToolExecution(s),
+            Self::ValidationFailed(s) => pdf_common::PdfError::Validation(s),
+            Self::StorageError(s) => pdf_common::PdfError::Storage(s),
+            Self::AuditError(s) => pdf_common::PdfError::Audit(s),
+            Self::ConfigError(s) => pdf_common::PdfError::Config(s),
+            Self::MessageSendError(s) => pdf_common::PdfError::MessageSend(s),
+            Self::ToolNotFound(s) => pdf_common::PdfError::ToolNotFound(s),
+            Self::InvalidToolDefinition(s) => pdf_common::PdfError::InvalidToolDefinition(s),
+            Self::PluginLoadError(s) => pdf_common::PdfError::PluginLoad(s),
+            Self::JsonError(e) => pdf_common::PdfError::Json(e),
+            Self::ToolAlreadyRegistered(s) => pdf_common::PdfError::ToolAlreadyRegistered(s),
+            Self::RateLimitExceeded(s) => pdf_common::PdfError::RateLimitExceeded(s),
+            Self::CircuitBreakerOpen(s) => pdf_common::PdfError::CircuitBreakerOpen(s),
+            Self::SchemaValidationError(s) => pdf_common::PdfError::SchemaValidation(s),
+            Self::ExecutionTimeout(ms) => pdf_common::PdfError::Timeout(ms),
+            Self::ToolUnavailable(a, b) => pdf_common::PdfError::ToolUnavailable(format!("{}: {}", a, b)),
+            Self::DiscoveryError(s) => pdf_common::PdfError::Discovery(s),
+            Self::ControlPlaneError(s) => pdf_common::PdfError::ControlPlane(s),
+        }
+    }
+}
+
+/// Implement `From<pdf_common::PdfError> for PdfModuleError` for backward compatibility.
+/// This allows functions that return `PdfResult<T>` to accept `pdf_common::PdfError`
+/// via the `?` operator.
+impl From<pdf_common::PdfError> for PdfModuleError {
+    fn from(err: pdf_common::PdfError) -> Self {
+        match err {
+            pdf_common::PdfError::FileNotFound(s) => Self::FileNotFound(s),
+            pdf_common::PdfError::InvalidFileType(s) => Self::InvalidFileType(s),
+            pdf_common::PdfError::FileTooLarge(s) => Self::FileTooLarge(s),
+            pdf_common::PdfError::CorruptedFile(s) => Self::CorruptedFile(s),
+            pdf_common::PdfError::Extraction(s) => Self::Extraction(s),
+            pdf_common::PdfError::AdapterNotFound(s) => Self::AdapterNotFound(s),
+            pdf_common::PdfError::ToolRegistration(s) => Self::ToolRegistrationError(s),
+            pdf_common::PdfError::ToolExecution(s) => Self::ToolExecutionError(s),
+            pdf_common::PdfError::ToolNotFound(s) => Self::ToolNotFound(s),
+            pdf_common::PdfError::ToolAlreadyRegistered(s) => Self::ToolAlreadyRegistered(s),
+            pdf_common::PdfError::InvalidToolDefinition(s) => Self::InvalidToolDefinition(s),
+            pdf_common::PdfError::PluginLoad(s) => Self::PluginLoadError(s),
+            pdf_common::PdfError::ToolUnavailable(s) => Self::ToolUnavailable(s.clone(), s),
+            pdf_common::PdfError::Discovery(s) => Self::DiscoveryError(s),
+            pdf_common::PdfError::RateLimitExceeded(s) => Self::RateLimitExceeded(s),
+            pdf_common::PdfError::CircuitBreakerOpen(s) => Self::CircuitBreakerOpen(s),
+            pdf_common::PdfError::Timeout(ms) => Self::ExecutionTimeout(ms),
+            pdf_common::PdfError::MessageSend(s) => Self::MessageSendError(s),
+            pdf_common::PdfError::ControlPlane(s) => Self::ControlPlaneError(s),
+            pdf_common::PdfError::Validation(s) => Self::ValidationFailed(s),
+            pdf_common::PdfError::SchemaValidation(s) => Self::SchemaValidationError(s),
+            pdf_common::PdfError::Config(s) => Self::ConfigError(s),
+            pdf_common::PdfError::Storage(s) => Self::StorageError(s),
+            pdf_common::PdfError::Audit(s) => Self::AuditError(s),
+            pdf_common::PdfError::Http(s) => Self::Extraction(s),
+            pdf_common::PdfError::Database(s) => Self::StorageError(s),
+            pdf_common::PdfError::LLM(s) => Self::Extraction(s),
+            pdf_common::PdfError::ParameterMissing(s) => Self::ValidationFailed(s),
+            pdf_common::PdfError::ParameterType(s) => Self::ValidationFailed(s),
+            pdf_common::PdfError::Io(e) => Self::IoError(e),
+            pdf_common::PdfError::Json(e) => Self::JsonError(e),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
