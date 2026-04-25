@@ -36,27 +36,24 @@ pub mod metrics_def {
     /// Record cache operation count
     /// Label: operation = hit | miss | eviction
     pub fn cache_operations(operation: &str) {
-        counter!("pdf_cache_operations", "operation" => operation.to_string())
-            .increment(1);
+        counter!("pdf_cache_operations", "operation" => operation.to_string()).increment(1);
     }
 
     /// Record smart router distribution
     /// Label: engine = lopdf | pdf-extract | pdfium
     pub fn route_distribution(engine: &str) {
-        counter!("pdf_route_distribution", "engine" => engine.to_string())
-            .increment(1);
+        counter!("pdf_route_distribution", "engine" => engine.to_string()).increment(1);
     }
 
     /// Record circuit breaker state
     /// Labels: engine, state = closed | open | half_open
     pub fn circuit_breaker_state(engine: &str, state: &str) {
-        gauge!("pdf_circuit_breaker_state", "engine" => engine.to_string())
-            .set(match state {
-                "closed" => 0.0,
-                "half_open" => 1.0,
-                "open" => 2.0,
-                _ => -1.0,
-            });
+        gauge!("pdf_circuit_breaker_state", "engine" => engine.to_string()).set(match state {
+            "closed" => 0.0,
+            "half_open" => 1.0,
+            "open" => 2.0,
+            _ => -1.0,
+        });
     }
 
     /// Record file size in MB

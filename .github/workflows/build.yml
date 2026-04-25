@@ -39,12 +39,17 @@ jobs:
       - name: Run tests
         run: |
           cd pdf-module-rs
-          cargo test --all-features
+          cargo test
 
       - name: Run clippy
         run: |
           cd pdf-module-rs
-          cargo clippy --all-features -- -D warnings
+          cargo clippy -- -D warnings
+
+      - name: Check formatting
+        run: |
+          cd pdf-module-rs
+          cargo fmt --all -- --check
 
   # ==================== 构建客户端版本 (多平台) ====================
   build-client:

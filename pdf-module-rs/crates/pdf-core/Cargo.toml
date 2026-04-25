@@ -37,6 +37,7 @@ sha2 = { workspace = true }
 regex = { workspace = true }
 jieba-rs = { workspace = true }
 once_cell = { workspace = true }
+dashmap = { workspace = true }
 
 # 配置
 dotenvy = { workspace = true }
@@ -59,5 +60,17 @@ uuid = { workspace = true }
 walkdir = { workspace = true }
 bytes = { workspace = true }
 
+# 插件化架构
+inventory = { workspace = true }
+libloading = { workspace = true }
+
+# 数据库
+surrealdb = { workspace = true, features = ["kv-mem"] }
+
+[features]
+default = []
+s3 = []
+
 [dev-dependencies]
 tempfile = "3.10"
+async-trait = { workspace = true }

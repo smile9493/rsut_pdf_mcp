@@ -1,4 +1,5 @@
- //! MCP Server implementation using stdio transport
+
+//! MCP Server implementation using stdio transport
 //! Implements JSON-RPC 2.0 protocol for MCP (Model Context Protocol)
 
 use pdf_core::{dto::*, PathValidationConfig, PdfExtractorService};
@@ -32,10 +33,7 @@ pub async fn run_stdio(service: Arc<PdfExtractorService>) -> anyhow::Result<()> 
             Ok(req) => req,
             Err(e) => {
                 error!("Failed to parse request: {}", e);
-                let response = JsonRpcResponse::error(
-                    None,
-                    JsonRpcError::parse_error(),
-                );
+                let response = JsonRpcResponse::error(None, JsonRpcError::parse_error());
                 write_response(&mut stdout_lock, &response)?;
                 continue;
             }
@@ -49,7 +47,10 @@ pub async fn run_stdio(service: Arc<PdfExtractorService>) -> anyhow::Result<()> 
 }
 
 /// Write JSON-RPC response to stdout
-fn write_response(stdout: &mut std::io::StdoutLock, response: &JsonRpcResponse) -> anyhow::Result<()> {
+fn write_response(
+    stdout: &mut std::io::StdoutLock,
+    response: &JsonRpcResponse,
+) -> anyhow::Result<()> {
     let json = serde_json::to_string(response)?;
     debug!("Sending: {}", json);
     writeln!(stdout, "{}", json)?;
@@ -66,142 +67,167 @@ pub async fn handle_request(
         "initialize" => handle_initialize(&request),
         "tools/list" => handle_tools_list(&request),
         "tools/call" => handle_tools_call(service, &request).await,
-        _ => JsonRpcResponse::error(
-            request.id,
-            JsonRpcError::method_not_found(&request.method),
-        ),
+        _ => JsonRpcResponse::error(request.id, JsonRpcError::method_not_found(&request.method)),
     }
 }
 
-/// Handle initialize request
+/// Handle initialize request with detailed server info
 fn handle_initialize(request: &JsonRpcRequest) -> JsonRpcResponse {
     let result = serde_json::json!({
         "protocolVersion": "2024-11-05",
         "serverInfo": {
             "name": "pdf-module-mcp",
-            "version": "0.1.0"
+            "version": "0.2.0",
+            "description": "高性能 PDF 文本提取 MCP 服务器，支持多种提取引擎、智能路由、缓存优化",
+            "author": "smile9493",
+            "homepage": "https://github.com/smile9493/rsut_pdf_mcp",
+            "features": [
+                "multi-engine",
+                "smart-routing",
+                "circuit-breaker",
+                "cache",
+                "chinese-support"
+            ]
         },
         "capabilities": {
-            "tools": {}
-        }
+            "tools": {
+                "listChanged": true
+            },
+            "resources": {},
+            "prompts": {}
+        },
+        "instructions": "欢迎使用 PDF Module MCP Server！\n\n这是一个高性能的 PDF 文本提取服务，提供以下核心功能：\n\n1. **文本提取**：从 PDF 中提取纯文本或结构化数据\n2. **关键词搜索**：在 PDF 中搜索关键词并返回上下文\n3. **关键词提取**：自动提取高频关键词（支持中英文）\n4. **智能路由**：根据文档特征自动选择最优提取引擎\n\n**快速开始**：\n- 使用 `list_adapters` 查看可用引擎\n- 使用 `extract_text` 提取文本（推荐不指定 adapter，让系统自动选择）\n- 使用 `search_keywords` 搜索关键词\n\n**性能提示**：\n- 结果会被缓存，重复查询更快\n- 大文件（>10MB）处理时间较长，建议异步处理"
     });
     JsonRpcResponse::success(request.id.clone(), result)
 }
 
-/// Handle tools/list request
+/// Handle tools/list request with detailed descriptions
 fn handle_tools_list(request: &JsonRpcRequest) -> JsonRpcResponse {
     let tools = vec![
+        // Tool 1: extract_text
         ToolDefinition {
             name: "extract_text".to_string(),
-            description: "Extract text content from a PDF file".to_string(),
+            description: include_str!("../descriptions/extract_text.md").to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
                     "file_path": {
                         "type": "string",
-                        "description": "Absolute path to the PDF file"
+                        "description": "PDF 文件的绝对路径。路径必须存在且可读。支持的安全检查：禁止路径遍历（../）、符号链接验证。"
                     },
                     "adapter": {
                         "type": "string",
-                        "description": "Extraction engine: lopdf, pdf-extract, pdfium",
+                        "description": "指定提取引擎。不指定时使用智能路由自动选择。可选值：lopdf（布局感知）、pdf-extract（快速）、pdfium（高兼容）",
                         "enum": ["lopdf", "pdf-extract", "pdfium", "pymupdf", "pdfplumber"]
                     }
                 },
                 "required": ["file_path"]
             }),
         },
+        // Tool 2: extract_structured
         ToolDefinition {
             name: "extract_structured".to_string(),
-            description: "Extract structured data with page info and positions".to_string(),
+            description: include_str!("../descriptions/extract_structured.md").to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
                     "file_path": {
                         "type": "string",
-                        "description": "Absolute path to the PDF file"
+                        "description": "PDF 文件的绝对路径"
                     },
                     "adapter": {
                         "type": "string",
-                        "description": "Extraction engine"
+                        "description": "提取引擎（推荐 lopdf 以获得最佳位置精度）"
                     },
                     "enable_highlight": {
                         "type": "boolean",
-                        "description": "Include highlight metadata"
+                        "description": "是否包含高亮元数据（用于前端渲染）。默认 false。"
                     }
                 },
                 "required": ["file_path"]
             }),
         },
-        ToolDefinition {
-            name: "get_page_count".to_string(),
-            description: "Get the number of pages in a PDF file".to_string(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "file_path": {
-                        "type": "string",
-                        "description": "Absolute path to the PDF file"
-                    }
-                },
-                "required": ["file_path"]
-            }),
-        },
+        // Tool 3: search_keywords
         ToolDefinition {
             name: "search_keywords".to_string(),
-            description: "Search for keywords in a PDF file".to_string(),
+            description: include_str!("../descriptions/search_keywords.md").to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
                     "file_path": {
                         "type": "string",
-                        "description": "Absolute path to the PDF file"
+                        "description": "PDF 文件的绝对路径"
                     },
                     "keywords": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "List of keywords to search"
+                        "description": "要搜索的关键词列表。支持正则表达式特殊字符（会被自动转义）。"
                     },
                     "case_sensitive": {
                         "type": "boolean",
-                        "description": "Case sensitive search"
+                        "description": "是否区分大小写。默认 false（不区分）。"
                     },
                     "context_length": {
                         "type": "integer",
-                        "description": "Context characters around match (default: 50)"
+                        "description": "匹配上下文的字符数（前后各取 N 个字符）。默认 50。建议范围：30-200。",
+                        "default": 50,
+                        "minimum": 10,
+                        "maximum": 500
                     }
                 },
                 "required": ["file_path", "keywords"]
             }),
         },
+        // Tool 4: extract_keywords
         ToolDefinition {
             name: "extract_keywords".to_string(),
-            description: "Auto-extract top keywords by frequency".to_string(),
+            description: include_str!("../descriptions/extract_keywords.md").to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
                     "file_path": {
                         "type": "string",
-                        "description": "Absolute path to the PDF file"
+                        "description": "PDF 文件的绝对路径"
                     },
                     "top_n": {
                         "type": "integer",
-                        "description": "Number of top keywords"
+                        "description": "返回前 N 个高频关键词。默认 10。建议范围：5-50。",
+                        "default": 10,
+                        "minimum": 1,
+                        "maximum": 100
                     }
                 },
                 "required": ["file_path"]
             }),
         },
+        // Tool 5: get_page_count
+        ToolDefinition {
+            name: "get_page_count".to_string(),
+            description: include_str!("../descriptions/get_page_count.md").to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "PDF 文件的绝对路径"
+                    }
+                },
+                "required": ["file_path"]
+            }),
+        },
+        // Tool 6: list_adapters
         ToolDefinition {
             name: "list_adapters".to_string(),
-            description: "List available PDF extraction engines".to_string(),
+            description: include_str!("../descriptions/list_adapters.md").to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {}
             }),
         },
+        // Tool 7: cache_stats
         ToolDefinition {
             name: "cache_stats".to_string(),
-            description: "Get cache statistics".to_string(),
+            description: include_str!("../descriptions/cache_stats.md").to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {}
@@ -240,7 +266,10 @@ async fn handle_tools_call(
         }
     };
 
-    let arguments = params.get("arguments").cloned().unwrap_or(serde_json::json!({}));
+    let arguments = params
+        .get("arguments")
+        .cloned()
+        .unwrap_or(serde_json::json!({}));
 
     let result = match tool_name {
         "extract_text" => handle_extract_text(service, &arguments).await,
@@ -279,16 +308,14 @@ async fn handle_extract_text(
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("Missing file_path"))?;
     let file_path = std::path::Path::new(file_path_str);
-    
+
     // Validate path safety
     pdf_core::FileValidator::validate_path_safety(file_path, &default_path_config())
         .map_err(|e| anyhow::anyhow!("Path validation failed: {}", e))?;
-    
+
     let adapter = args["adapter"].as_str();
 
-    let result = service
-        .extract_text(file_path, adapter)
-        .await?;
+    let result = service.extract_text(file_path, adapter).await?;
 
     Ok(vec![Content::text(result.extracted_text)])
 }
@@ -302,19 +329,15 @@ async fn handle_extract_structured(
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("Missing file_path"))?;
     let file_path = std::path::Path::new(file_path_str);
-    
+
     // Validate path safety
     pdf_core::FileValidator::validate_path_safety(file_path, &default_path_config())
         .map_err(|e| anyhow::anyhow!("Path validation failed: {}", e))?;
-    
+
     let adapter = args["adapter"].as_str();
 
     let result = service
-        .extract_structured(
-            file_path,
-            adapter,
-            &ExtractOptions::default(),
-        )
+        .extract_structured(file_path, adapter, &ExtractOptions::default())
         .await?;
 
     Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
@@ -329,7 +352,7 @@ async fn handle_get_page_count(
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("Missing file_path"))?;
     let file_path = std::path::Path::new(file_path_str);
-    
+
     // Validate path safety
     pdf_core::FileValidator::validate_path_safety(file_path, &default_path_config())
         .map_err(|e| anyhow::anyhow!("Path validation failed: {}", e))?;
@@ -348,11 +371,11 @@ async fn handle_search_keywords(
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("Missing file_path"))?;
     let file_path = std::path::Path::new(file_path_str);
-    
+
     // Validate path safety
     pdf_core::FileValidator::validate_path_safety(file_path, &default_path_config())
         .map_err(|e| anyhow::anyhow!("Path validation failed: {}", e))?;
-    
+
     let keywords: Vec<String> = args["keywords"]
         .as_array()
         .ok_or_else(|| anyhow::anyhow!("Missing keywords"))?
@@ -379,16 +402,14 @@ async fn handle_extract_keywords(
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("Missing file_path"))?;
     let file_path = std::path::Path::new(file_path_str);
-    
+
     // Validate path safety
     pdf_core::FileValidator::validate_path_safety(file_path, &default_path_config())
         .map_err(|e| anyhow::anyhow!("Path validation failed: {}", e))?;
-    
+
     let top_n = args["top_n"].as_u64().unwrap_or(10) as usize;
 
-    let result = service
-        .extract_keywords(file_path, 2, 20, top_n)
-        .await?;
+    let result = service.extract_keywords(file_path, 2, 20, top_n).await?;
 
     Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
 }
@@ -396,7 +417,9 @@ async fn handle_extract_keywords(
 /// Handle list_adapters tool
 fn handle_list_adapters(service: &Arc<PdfExtractorService>) -> anyhow::Result<Vec<Content>> {
     let adapters = service.list_engines();
-    Ok(vec![Content::text(serde_json::to_string_pretty(&adapters)?)])
+    Ok(vec![Content::text(serde_json::to_string_pretty(
+        &adapters,
+    )?)])
 }
 
 /// Handle cache_stats tool

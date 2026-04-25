@@ -3,7 +3,10 @@
 
 use crate::cache::ExtractionCache;
 use crate::config::ServerConfig;
-use crate::dto::{AdapterInfo, CacheStats, ExtractOptions, KeywordSearchResult, StructuredExtractionResult, TextExtractionResult};
+use crate::dto::{
+    AdapterInfo, CacheStats, ExtractOptions, KeywordSearchResult, StructuredExtractionResult,
+    TextExtractionResult,
+};
 use crate::engine::{LopdfEngine, PdfEngine, PdfExtractEngine, PdfiumEngine};
 use crate::error::{PdfModuleError, PdfResult};
 use crate::keyword::KeywordExtractor;
@@ -20,51 +23,103 @@ use std::time::{Duration, Instant};
 pub struct SmartRouter {
     /// Threshold for small documents (pages)
     small_doc_threshold: u32,
+    /// Threshold for small files (MB)
+    small_file_size_mb: u64,
+    /// Route cache to avoid repeated PDF loading
+    route_cache: std::sync::Mutex<
+        std::collections::HashMap<std::path::PathBuf, (String, std::time::Instant)>,
+    >,
+    /// Route cache TTL in seconds
+    route_cache_ttl: u64,
 }
 
 impl SmartRouter {
     pub fn new() -> Self {
         Self {
             small_doc_threshold: 5,
+            small_file_size_mb: 1, // Files < 1MB are considered small
+            route_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
+            route_cache_ttl: 300, // 5 minutes cache TTL
         }
     }
 
     /// Route to the best engine based on document characteristics
     /// Returns the engine name to use
     pub fn route(&self, file_path: &Path) -> Option<String> {
-        // Try to quickly read PDF metadata
+        // 1. Check route cache first
+        {
+            let cache = self.route_cache.lock().unwrap();
+            if let Some((cached_engine, timestamp)) = cache.get(file_path) {
+                if timestamp.elapsed().as_secs() < self.route_cache_ttl {
+                    tracing::debug!("Route cache hit for {:?}: {}", file_path, cached_engine);
+                    return Some(cached_engine.clone());
+                }
+            }
+        }
+
+        // 2. Quick file size check (avoid loading PDF for small files)
+        if let Ok(metadata) = std::fs::metadata(file_path) {
+            let file_size_mb = metadata.len() / (1024 * 1024);
+            if file_size_mb <= self.small_file_size_mb {
+                let engine = "pdf-extract".to_string();
+                self.cache_route(file_path, &engine);
+                return Some(engine);
+            }
+        }
+
+        // 3. Load PDF and analyze
         let doc = lopdf::Document::load(file_path).ok()?;
         let page_count = doc.get_pages().len() as u32;
 
         // Feature 1: Small documents with simple content -> pdf-extract (fastest)
-        if page_count <= self.small_doc_threshold {
+        let engine = if page_count <= self.small_doc_threshold {
             if !Self::detect_complex_layout(&doc) {
-                return Some("pdf-extract".to_string());
+                "pdf-extract".to_string()
+            } else {
+                "lopdf".to_string()
             }
         }
-
         // Feature 2: Special encoding -> pdfium (most compatible)
-        if Self::detect_special_encoding(&doc) {
-            return Some("pdfium".to_string());
+        else if Self::detect_special_encoding(&doc) {
+            "pdfium".to_string()
         }
-
         // Default: lopdf (layout-aware)
-        Some("lopdf".to_string())
+        else {
+            "lopdf".to_string()
+        };
+
+        // 4. Cache the route result
+        self.cache_route(file_path, &engine);
+
+        Some(engine)
+    }
+
+    /// Cache the route result
+    fn cache_route(&self, file_path: &Path, engine: &str) {
+        let mut cache = self.route_cache.lock().unwrap();
+        cache.insert(
+            file_path.to_path_buf(),
+            (engine.to_string(), std::time::Instant::now()),
+        );
+
+        // Clean up expired entries (simple cleanup)
+        if cache.len() > 100 {
+            let now = std::time::Instant::now();
+            cache.retain(|_, (_, timestamp)| {
+                now.duration_since(*timestamp).as_secs() < self.route_cache_ttl
+            });
+        }
     }
 
     /// Detect if document has complex layout (images, forms, etc.)
     fn detect_complex_layout(doc: &lopdf::Document) -> bool {
         // Check first few pages for XObject (images, forms)
         for (_, page_obj_id) in doc.get_pages().iter().take(3) {
-            if let Ok(page_obj) = doc.get_object(*page_obj_id) {
-                if let lopdf::Object::Dictionary(ref dict) = page_obj {
-                    if let Ok(resources) = dict.get(b"Resources") {
-                        if let lopdf::Object::Dictionary(ref res_dict) = resources {
-                            // Check for XObject (images, forms)
-                            if res_dict.get(b"XObject").is_ok() {
-                                return true;
-                            }
-                        }
+            if let Ok(lopdf::Object::Dictionary(ref dict)) = doc.get_object(*page_obj_id) {
+                if let Ok(lopdf::Object::Dictionary(ref res_dict)) = dict.get(b"Resources") {
+                    // Check for XObject (images, forms)
+                    if res_dict.get(b"XObject").is_ok() {
+                        return true;
                     }
                 }
             }
@@ -76,27 +131,18 @@ impl SmartRouter {
     fn detect_special_encoding(doc: &lopdf::Document) -> bool {
         // Check for CIDFont or Type3 fonts
         for (_, page_obj_id) in doc.get_pages().iter().take(3) {
-            if let Ok(page_obj) = doc.get_object(*page_obj_id) {
-                if let lopdf::Object::Dictionary(ref dict) = page_obj {
-                    if let Ok(resources) = dict.get(b"Resources") {
-                        if let lopdf::Object::Dictionary(ref res_dict) = resources {
-                            if let Ok(fonts) = res_dict.get(b"Font") {
-                                if let lopdf::Object::Dictionary(ref font_dict) = fonts {
-                                    for (_, font_obj) in font_dict.iter() {
-                                        if let Ok((_, font_ref)) = doc.dereference(font_obj) {
-                                            if let lopdf::Object::Dictionary(ref f) = font_ref {
-                                                // Check for CIDFont or Type3
-                                                if let Ok(subtype) = f.get(b"Subtype") {
-                                                    if let lopdf::Object::Name(ref name) = subtype {
-                                                        if name == b"CIDFontType0" 
-                                                            || name == b"CIDFontType2"
-                                                            || name == b"Type3" {
-                                                            return true;
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
+            if let Ok(lopdf::Object::Dictionary(ref dict)) = doc.get_object(*page_obj_id) {
+                if let Ok(lopdf::Object::Dictionary(ref res_dict)) = dict.get(b"Resources") {
+                    if let Ok(lopdf::Object::Dictionary(ref font_dict)) = res_dict.get(b"Font") {
+                        for (_, font_obj) in font_dict.iter() {
+                            if let Ok((_, lopdf::Object::Dictionary(ref f))) = doc.dereference(font_obj) {
+                                // Check for CIDFont or Type3
+                                if let Ok(lopdf::Object::Name(ref name)) = f.get(b"Subtype") {
+                                    if name == b"CIDFontType0"
+                                        || name == b"CIDFontType2"
+                                        || name == b"Type3"
+                                    {
+                                        return true;
                                     }
                                 }
                             }
@@ -117,42 +163,38 @@ impl Default for SmartRouter {
 
 // ============ Circuit Breaker ============
 
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, AtomicU64, AtomicU8, Ordering};
 
-/// Circuit breaker state
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum CircuitState {
-    Closed,
-    Open,
-    HalfOpen,
-}
+/// Circuit breaker state (using atomic for lock-free access)
+const CIRCUIT_CLOSED: u8 = 0;
+const CIRCUIT_OPEN: u8 = 1;
+const CIRCUIT_HALF_OPEN: u8 = 2;
 
-/// Engine state for circuit breaker
+/// Engine state for circuit breaker (lock-free)
 struct EngineBreaker {
     consecutive_failures: AtomicU32,
-    last_failure_time: Mutex<Option<Instant>>,
-    state: Mutex<CircuitState>,
+    last_failure_time: AtomicU64, // Unix timestamp in seconds
+    state: AtomicU8,
 }
 
 impl EngineBreaker {
     fn new() -> Self {
         Self {
             consecutive_failures: AtomicU32::new(0),
-            last_failure_time: Mutex::new(None),
-            state: Mutex::new(CircuitState::Closed),
+            last_failure_time: AtomicU64::new(0),
+            state: AtomicU8::new(CIRCUIT_CLOSED),
         }
     }
 }
 
-/// Circuit breaker for engine failure protection
+/// Circuit breaker for engine failure protection (lock-free implementation)
 pub struct CircuitBreaker {
     /// Failure threshold before opening circuit
     failure_threshold: u32,
     /// Cooldown period before attempting recovery
     cooldown: Duration,
     /// Per-engine breakers
-    breakers: HashMap<String, EngineBreaker>,
+    breakers: std::sync::Mutex<HashMap<String, EngineBreaker>>,
 }
 
 impl CircuitBreaker {
@@ -160,70 +202,72 @@ impl CircuitBreaker {
         Self {
             failure_threshold,
             cooldown,
-            breakers: HashMap::new(),
+            breakers: std::sync::Mutex::new(HashMap::new()),
         }
     }
 
     /// Register an engine
     pub fn register_engine(&mut self, engine_name: &str) {
-        self.breakers
-            .insert(engine_name.to_string(), EngineBreaker::new());
+        let mut breakers = self.breakers.lock().unwrap();
+        breakers.insert(engine_name.to_string(), EngineBreaker::new());
     }
 
     /// Record a successful operation
     pub fn record_success(&self, engine: &str) {
-        if let Some(breaker) = self.breakers.get(engine) {
+        let breakers = self.breakers.lock().unwrap();
+        if let Some(breaker) = breakers.get(engine) {
             breaker.consecutive_failures.store(0, Ordering::Relaxed);
-            if let Ok(mut state) = breaker.state.lock() {
-                *state = CircuitState::Closed;
-            }
+            breaker.state.store(CIRCUIT_CLOSED, Ordering::Relaxed);
             metrics_def::circuit_breaker_state(engine, "closed");
         }
     }
 
     /// Record a failed operation
     pub fn record_failure(&self, engine: &str) {
-        if let Some(breaker) = self.breakers.get(engine) {
+        let breakers = self.breakers.lock().unwrap();
+        if let Some(breaker) = breakers.get(engine) {
             let failures = breaker.consecutive_failures.fetch_add(1, Ordering::Relaxed) + 1;
-            
-            if let Ok(mut last_time) = breaker.last_failure_time.lock() {
-                *last_time = Some(Instant::now());
-            }
+
+            // Update last failure time (current Unix timestamp)
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            breaker.last_failure_time.store(now, Ordering::Relaxed);
 
             if failures >= self.failure_threshold {
-                if let Ok(mut state) = breaker.state.lock() {
-                    *state = CircuitState::Open;
-                }
+                breaker.state.store(CIRCUIT_OPEN, Ordering::Relaxed);
                 metrics_def::circuit_breaker_state(engine, "open");
             }
         }
     }
 
-    /// Check if engine is available (not in open state)
+    /// Check if engine is available (not in open state) - lock-free check
     pub fn is_available(&self, engine: &str) -> bool {
-        if let Some(breaker) = self.breakers.get(engine) {
-            let state_guard = breaker.state.lock();
-            if let Ok(mut state) = state_guard {
-                match *state {
-                    CircuitState::Closed => true,
-                    CircuitState::Open => {
-                        // Check if cooldown has passed
-                        if let Ok(last_time) = breaker.last_failure_time.lock() {
-                            if let Some(time) = *last_time {
-                                if time.elapsed() >= self.cooldown {
-                                    // Transition to half-open
-                                    *state = CircuitState::HalfOpen;
-                                    metrics_def::circuit_breaker_state(engine, "half_open");
-                                    return true;
-                                }
-                            }
-                        }
+        let breakers = self.breakers.lock().unwrap();
+        if let Some(breaker) = breakers.get(engine) {
+            let state = breaker.state.load(Ordering::Relaxed);
+            match state {
+                CIRCUIT_CLOSED => true,
+                CIRCUIT_OPEN => {
+                    // Check if cooldown has passed
+                    let last_failure = breaker.last_failure_time.load(Ordering::Relaxed);
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+
+                    if now - last_failure >= self.cooldown.as_secs() {
+                        // Transition to half-open
+                        breaker.state.store(CIRCUIT_HALF_OPEN, Ordering::Relaxed);
+                        metrics_def::circuit_breaker_state(engine, "half_open");
+                        true
+                    } else {
                         false
                     }
-                    CircuitState::HalfOpen => true,
                 }
-            } else {
-                true
+                CIRCUIT_HALF_OPEN => true,
+                _ => true,
             }
         } else {
             true
@@ -298,27 +342,23 @@ impl PdfExtractorService {
 
     /// Get an engine by name (supports aliases)
     pub fn get_engine(&self, name: &str) -> PdfResult<Arc<dyn PdfEngine>> {
-        self.engines
-            .get(name)
-            .cloned()
-            .ok_or_else(|| {
-                PdfModuleError::AdapterNotFound(format!(
-                    "Unknown engine '{}'. Available: {:?}",
-                    name,
-                    self.engines.keys().collect::<Vec<_>>()
-                ))
-            })
+        self.engines.get(name).cloned().ok_or_else(|| {
+            PdfModuleError::AdapterNotFound(format!(
+                "Unknown engine '{}'. Available: {:?}",
+                name,
+                self.engines.keys().collect::<Vec<_>>()
+            ))
+        })
     }
 
     /// Select engine using smart routing or specified name
     fn select_engine(&self, file_path: &Path, engine_name: Option<&str>) -> String {
         match engine_name {
             Some(name) => name.to_string(),
-            None if self.enable_smart_routing => {
-                self.router
-                    .route(file_path)
-                    .unwrap_or_else(|| self.default_engine.clone())
-            }
+            None if self.enable_smart_routing => self
+                .router
+                .route(file_path)
+                .unwrap_or_else(|| self.default_engine.clone()),
             None => self.default_engine.clone(),
         }
     }
@@ -476,7 +516,8 @@ impl PdfExtractorService {
         keywords: &[String],
         context_length: usize,
     ) -> PdfResult<KeywordSearchResult> {
-        self.search_keywords_with_options(file_path, keywords, context_length, false).await
+        self.search_keywords_with_options(file_path, keywords, context_length, false)
+            .await
     }
 
     /// Search keywords in PDF with full options
@@ -490,7 +531,9 @@ impl PdfExtractorService {
         let start = Instant::now();
 
         // Extract structured data first
-        let structured = self.extract_structured(file_path, None, &ExtractOptions::default()).await?;
+        let structured = self
+            .extract_structured(file_path, None, &ExtractOptions::default())
+            .await?;
 
         // Search in pages with case sensitivity option
         let extractor = KeywordExtractor::with_case_sensitive(case_sensitive);
@@ -517,7 +560,12 @@ impl PdfExtractorService {
         let text_result = self.extract_text(file_path, None).await?;
 
         // Extract keywords
-        let result = self.keyword_extractor.extract_by_frequency(&text_result.extracted_text, min_length, max_length, top_n);
+        let result = self.keyword_extractor.extract_by_frequency(
+            &text_result.extracted_text,
+            min_length,
+            max_length,
+            top_n,
+        );
 
         // Record metrics
         let elapsed = start.elapsed().as_secs_f64() * 1000.0;

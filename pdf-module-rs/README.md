@@ -1,6 +1,6 @@
 # PDF Module Rust
 
-高性能 PDF 文本提取服务，支持 REST API 和 MCP (Model Context Protocol) 双接口。
+高性能 PDF 文本提取服务，支持 REST API 和 MCP (Model Context Protocol) 双接口，基于插件化架构实现动态工具加载与编排。
 
 ## 特性
 
@@ -8,6 +8,10 @@
 - **智能路由**: 根据文档特征自动选择最优引擎
 - **熔断降级**: 自动故障转移，保证服务可用性
 - **双接口**: REST API + MCP (stdio/SSE)
+- **插件化架构**: 动态工具注册/发现/编排，支持编译期和运行期插件加载
+- **控制平面**: 审计日志、限流、熔断、Schema 管理、Prometheus 指标
+- **SurrealDB 嵌入式存储**: Schema-less JSON 存储，适配任意 PDF 模板输出
+- **Web 管理层**: REST API 管理工具/审计/健康检查/Prometheus 指标
 - **高性能**: Rust 实现，内存占用低，速度快
 
 ## 快速开始
@@ -74,7 +78,7 @@ curl http://localhost:8000/api/v1/x2text/adapters
 
 ## API 端点
 
-### REST API
+### REST API (PDF 提取)
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
@@ -84,6 +88,28 @@ curl http://localhost:8000/api/v1/x2text/adapters
 | `/api/v1/x2text/info` | POST | 获取 PDF 信息 |
 | `/api/v1/x2text/adapters` | GET | 列出可用引擎 |
 | `/api/v1/x2text/cache/stats` | GET | 缓存统计 |
+
+### REST API (插件管理)
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/v1/tools` | GET | 列出所有注册工具 |
+| `/api/v1/tools/{name}` | GET | 获取工具详情 |
+| `/api/v1/tools/{name}/execute` | POST | 执行工具 |
+| `/api/v1/audit-logs` | GET | 查询审计日志 |
+| `/api/v1/audit-logs/stats` | GET | 审计统计 |
+| `/api/v1/audit-logs/export` | GET | 导出审计日志 (CSV/JSON) |
+| `/api/v1/schemas` | GET/POST | Schema 管理 |
+| `/api/v1/health` | GET | 健康检查 |
+
+### 健康检查端点
+
+| 端点 | 说明 |
+|------|------|
+| `/health` | 完整健康检查 |
+| `/health/live` | 存活探针 (Kubernetes liveness) |
+| `/health/ready` | 就绪探针 (Kubernetes readiness) |
+| `/metrics` | Prometheus 指标 |
 
 ### MCP Tools
 
@@ -96,6 +122,100 @@ curl http://localhost:8000/api/v1/x2text/adapters
 | `extract_keywords` | 自动提取高频词 |
 | `list_adapters` | 列出可用引擎 |
 | `cache_stats` | 缓存统计 |
+
+## 插件化架构
+
+### 架构概览
+
+```
+┌─────────────────────────────────────────────────┐
+│                  MCP Host                        │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
+│  │ Protocol │  │Transport │  │ Bootstrap│      │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘      │
+│       └──────────────┼────────────┘             │
+│                      ▼                          │
+│  ┌──────────────────────────────────────┐       │
+│  │         Plugin Registry              │       │
+│  │  ┌─────────┐ ┌──────────┐ ┌──────┐ │       │
+│  │  │Category │ │Capability│ │Cache │ │       │
+│  │  │ Index   │ │  Index   │ │      │ │       │
+│  │  └─────────┘ └──────────┘ └──────┘ │       │
+│  └──────────────────┬───────────────────┘       │
+│                     ▼                           │
+│  ┌──────────────────────────────────────┐       │
+│  │        Tool Dispatcher               │       │
+│  └──────────────────┬───────────────────┘       │
+│                     ▼                           │
+│  ┌──────────────────────────────────────┐       │
+│  │     Capability Adapters              │       │
+│  │  PDF│ETL│Database│MiniMax│Remote     │       │
+│  └──────────────────┬───────────────────┘       │
+│                     ▼                           │
+│  ┌──────────────────────────────────────┐       │
+│  │        Control Plane                 │       │
+│  │  Audit│RateLimit│CircuitBreak│Schema│Metrics│
+│  └──────────────────────────────────────┘       │
+└─────────────────────────────────────────────────┘
+```
+
+### 核心 Trait
+
+| Trait | 说明 |
+|-------|------|
+| `ToolHandler` | 工具执行标准接口 (execute/validate/capabilities/category) |
+| `PluginRegistry` | 工具注册/查询/生命周期管理 |
+| `ToolDispatcher` | 工具调度/批量执行/健康检查 |
+| `DynamicDiscovery` | 动态发现/热加载/目录扫描 |
+| `ControlPlane` | 审计/限流/熔断/Schema/健康状态 |
+
+### 内置适配器
+
+| 适配器 | 类别 | 能力 |
+|--------|------|------|
+| `PdfExtractorPlugin` | extraction | file_input, text_output, cacheable |
+| `EtlWorkflowPlugin` | etl | file_input, json_output, llm_required |
+| `DatabasePlugin` | storage | database, transaction |
+| `MiniMaxAdapterPlugin` | ai | remote, llm, chat |
+| `RemotePluginAdapter` | integration | remote, http, grpc |
+
+### 动态发现机制
+
+- **编译期发现** (`inventory` crate): 零成本抽象，编译时注册
+- **运行期发现** (`libloading` crate): 动态加载 `.so`/`.dylib`/`.dll` 插件
+- **统一发现器** (`UnifiedDiscovery`): 组合两种机制，优先编译期
+
+### 控制平面组件
+
+| 组件 | 说明 |
+|------|------|
+| `AuditLogger` | 审计日志记录，敏感字段脱敏，保留期管理 |
+| `RateLimiter` | 令牌桶限流，每工具独立配置，突发支持 |
+| `CircuitBreaker` | 熔断器状态机 (Closed→Open→HalfOpen→Closed) |
+| `SchemaManager` | 版本化 Schema 管理，基础 JSON Schema 验证 |
+| `MetricsCollector` | 执行指标收集，Prometheus 文本格式导出 |
+
+### SurrealDB 嵌入式存储
+
+使用 SurrealDB (内存模式) 作为 Schema-less 存储，适合存储不同 PDF 模板产生的动态 JSON 结构。
+
+```rust
+use pdf_core::database::{SurrealStore, SurrealStoreConfig};
+
+// 初始化
+let store = SurrealStore::with_defaults().await?;
+
+// 保存 ETL 结果
+let data = serde_json::json!({"pdf_path": "test.pdf", "pages": 100});
+store.save_etl_result("etl_results", "doc_001", data).await?;
+
+// 查询
+let results = store.query("etl_results", "pages > 50").await?;
+
+// 审计日志
+store.save_audit_log(&audit_log).await?;
+let logs = store.query_audit_logs(Some("pdf_extract"), 20).await?;
+```
 
 ## PDF 引擎
 
@@ -166,32 +286,105 @@ pdf-module-rs/
     │   │   ├── error.rs    # 错误处理
     │   │   ├── extractor.rs # 服务编排 + 智能路由 + 熔断
     │   │   ├── keyword.rs  # 关键词提取
-    │   │   ├── metrics.rs  # Prometheus 指标
-    │   │   └── validator.rs # 文件验证
+    │   │   ├── validator.rs # 文件验证
+    │   │   ├── audit/      # 审计日志
+    │   │   │   ├── mod.rs
+    │   │   │   └── audit_log.rs
+    │   │   ├── plugin/     # 插件化架构
+    │   │   │   ├── mod.rs
+    │   │   │   ├── tool_handler.rs    # ToolHandler trait
+    │   │   │   ├── registry.rs        # ToolRegistry 实现
+    │   │   │   ├── registry_trait.rs  # PluginRegistry trait
+    │   │   │   ├── dispatcher.rs      # ToolDispatcher trait
+    │   │   │   ├── discovery.rs       # DynamicDiscovery trait
+    │   │   │   ├── metadata_cache.rs  # 元数据缓存 (moka)
+    │   │   │   ├── compile_time_discovery.rs  # 编译期发现 (inventory)
+    │   │   │   ├── runtime_discovery.rs       # 运行期发现 (libloading)
+    │   │   │   ├── unified_discovery.rs       # 统一发现器
+    │   │   │   └── adapters/          # 能力适配器
+    │   │   │       ├── pdf_extractor.rs
+    │   │   │       ├── etl_workflow.rs
+    │   │   │       ├── database.rs
+    │   │   │       ├── minimax.rs
+    │   │   │       └── remote.rs
+    │   │   ├── control/    # 控制平面
+    │   │   │   ├── mod.rs
+    │   │   │   ├── control_plane.rs   # ControlPlane trait
+    │   │   │   ├── audit_logger.rs
+    │   │   │   ├── rate_limiter.rs
+    │   │   │   ├── circuit_breaker.rs
+    │   │   │   ├── schema_manager.rs
+    │   │   │   └── metrics_collector.rs
+    │   │   └── database/   # SurrealDB 存储
+    │   │       ├── mod.rs
+    │   │       └── surreal_store.rs
     │   └── Cargo.toml
     ├── pdf-rest/           # REST API 服务
     │   ├── src/
     │   │   ├── main.rs     # 入口
-    │   │   └── routes.rs   # 路由
+    │   │   ├── routes.rs   # PDF 提取路由
+    │   │   └── api/        # 插件管理 API
+    │   │       ├── mod.rs          # 工具管理
+    │   │       ├── audit.rs        # 审计可视化
+    │   │       ├── health.rs       # 健康检查
+    │   │       └── metrics.rs      # Prometheus 指标
     │   └── Cargo.toml
     ├── pdf-mcp/            # MCP Server
     │   ├── src/
     │   │   ├── main.rs     # 入口
     │   │   ├── server.rs   # stdio 传输
-    │   │   └── sse.rs      # SSE 传输
+    │   │   ├── sse.rs      # SSE 传输
+    │   │   ├── protocol/   # MCP 协议处理
+    │   │   ├── transport/  # 传输层抽象
+    │   │   ├── mcp_server.rs  # MCP Server
+    │   │   └── bootstrap.rs  # 启动引导
+    │   └── Cargo.toml
+    ├── pdf-etl/            # ETL 工作流
     │   └── Cargo.toml
     └── pdf-python/         # PyO3 绑定 (可选)
         └── Cargo.toml
 ```
 
-## 性能
+## 测试
 
-| 指标 | 值 |
-|------|-----|
-| 二进制大小 (pdf-rest) | 12MB |
-| 二进制大小 (pdf-mcp) | 16MB |
-| 内存占用 | ~10-50MB (取决于文件) |
-| 提取速度 | 10-50x vs Python |
+```bash
+# 端到端测试 (使用真实 PDF)
+cargo test --package pdf-core --test e2e_test -- --nocapture
+
+# 性能测试
+cargo test --package pdf-core --test perf_test -- --nocapture
+
+# 压力测试
+cargo test --package pdf-core --test stress_test -- --nocapture
+
+# 集成测试
+cargo test --package pdf-core --test integration_test
+
+# 全部测试
+cargo test --package pdf-core --test e2e_test --test perf_test --test stress_test --test integration_test
+```
+
+### 测试覆盖
+
+| 测试类型 | 数量 | 覆盖范围 |
+|----------|------|----------|
+| 端到端 | 6 | PDF 提取、插件注册、控制平面、SurrealDB、全链路、审计日志 |
+| 性能 | 4 | PDF 提取、插件注册、SurrealDB 读写、控制平面 |
+| 压力 | 6 | 并发提取、并发写入、高容量注册、熔断恢复、限流突发、指标高负载 |
+
+### 性能基准
+
+| 组件 | 指标 |
+|------|------|
+| PDF 提取 (缓存命中) | <1ms |
+| Plugin Registry (100 工具) | 注册/查询 <1ms |
+| SurrealDB 写入 | ~1.7M writes/sec |
+| SurrealDB 读取 | ~3.5M reads/sec |
+| Rate Limiter (10K checks) | 16ms |
+| Circuit Breaker (10K checks) | <1ms |
+| Metrics (50K records) | 22ms |
+| 并发 PDF 提取 (10 路) | 1ms, 100% 成功 |
+| 并发 DB 写入 (50 路) | 15ms, 100% 成功 |
 
 ## 许可证
 

@@ -3,9 +3,7 @@
 
 use axum::{
     extract::State,
-    response::{
-        sse::{Event, KeepAlive, Sse},
-    },
+    response::sse::{Event, KeepAlive, Sse},
     routing::{get, post},
     Json, Router,
 };
@@ -30,7 +28,12 @@ pub async fn run_sse(service: Arc<PdfExtractorService>, port: u16) -> anyhow::Re
         // Health check
         .route("/health", get(health))
         // CORS for web clients
-        .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        )
         .with_state(service);
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
@@ -49,8 +52,7 @@ async fn health() -> &'static str {
 
 /// SSE endpoint - returns a stream of events
 async fn sse_handler(
-    #[allow(unused_variables)]
-    State(service): State<Arc<PdfExtractorService>>,
+    #[allow(unused_variables)] State(service): State<Arc<PdfExtractorService>>,
 ) -> Sse<impl futures_util::Stream<Item = Result<Event, anyhow::Error>>> {
     // Create a channel for sending events
     let (tx, mut rx) = mpsc::channel::<String>(100);

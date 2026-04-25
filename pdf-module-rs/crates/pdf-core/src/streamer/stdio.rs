@@ -1,11 +1,9 @@
 //! Stdio message streamer implementation
 //! Implements MessageStreamer for stdio communication
 
-use crate::dto::{LogLevel, ToolExecutionResult};
 use crate::error::PdfResult;
-use crate::protocol::{ToolDefinition, ToolSpec, RuntimeVariables};
-use crate::streamer::tool_message::ToolMessage;
 use crate::streamer::streamer::MessageStreamer;
+use crate::streamer::tool_message::ToolMessage;
 use async_trait::async_trait;
 use std::io::{self, Write};
 
@@ -30,23 +28,23 @@ impl Default for StdioMessageStreamer {
 #[async_trait]
 impl MessageStreamer for StdioMessageStreamer {
     async fn send(&self, message: ToolMessage) -> PdfResult<()> {
-        let json = serde_json::to_string(&message)
-            .map_err(|e| crate::error::PdfModuleError::MessageSendError(format!(
+        let json = serde_json::to_string(&message).map_err(|e| {
+            crate::error::PdfModuleError::MessageSendError(format!(
                 "Failed to serialize message: {}",
                 e
-            )))?;
+            ))
+        })?;
 
-        writeln!(io::stdout(), "{}", json)
-            .map_err(|e| crate::error::PdfModuleError::MessageSendError(format!(
+        writeln!(io::stdout(), "{}", json).map_err(|e| {
+            crate::error::PdfModuleError::MessageSendError(format!(
                 "Failed to write to stdout: {}",
                 e
-            )))?;
+            ))
+        })?;
 
-        io::stdout().flush()
-            .map_err(|e| crate::error::PdfModuleError::MessageSendError(format!(
-                "Failed to flush stdout: {}",
-                e
-            )))?;
+        io::stdout().flush().map_err(|e| {
+            crate::error::PdfModuleError::MessageSendError(format!("Failed to flush stdout: {}", e))
+        })?;
 
         Ok(())
     }
@@ -56,6 +54,7 @@ impl MessageStreamer for StdioMessageStreamer {
 mod tests {
     use super::*;
     use crate::dto::LogLevel;
+    use crate::{ToolExecutionResult, ToolSpec, ToolDefinition, RuntimeVariables};
 
     #[tokio::test]
     async fn test_stdio_streamer_send_log() {
@@ -107,10 +106,7 @@ mod tests {
     async fn test_stdio_streamer_send_spec() {
         let streamer = StdioMessageStreamer::new();
 
-        let spec = ToolSpec::new(
-            "Test Config".to_string(),
-            "Test configuration".to_string(),
-        );
+        let spec = ToolSpec::new("Test Config".to_string(), "Test configuration".to_string());
 
         let result = streamer.send_spec(spec).await;
 
@@ -163,7 +159,9 @@ mod tests {
     async fn test_stdio_streamer_send_single_step() {
         let streamer = StdioMessageStreamer::new();
 
-        let result = streamer.send_single_step("Step 1 completed".to_string()).await;
+        let result = streamer
+            .send_single_step("Step 1 completed".to_string())
+            .await;
 
         assert!(result.is_ok());
     }

@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/pdf-core",
+    "crates/pdf-etl",
     "crates/pdf-mcp",
     "crates/pdf-rest",
     "crates/pdf-python",
@@ -41,6 +42,7 @@ sha2 = "0.10"
 regex = "1.10"
 jieba-rs = "0.7"
 once_cell = "1.19"
+dashmap = "5.5"
 
 # === 配置 ===
 dotenvy = "0.15"
@@ -86,7 +88,11 @@ google-cloud-storage = { version = "1.11", features = ["default-rustls-provider"
 azure_storage_blobs = { version = "0.21", features = ["enable_reqwest"] }
 remotefs-aws-s3 = "0.4"
 
+# === 数据库 ===
+surrealdb = { version = "2.0", features = ["kv-mem", "protocol-http"] }
+
 # === 插件化架构 ===
+inventory = "0.3"
 mcp-kit = { version = "0.4", features = ["full", "plugin-hot-reload"] }
 libloading = "0.9"
 wasmtime = { version = "44", features = ["default"] }

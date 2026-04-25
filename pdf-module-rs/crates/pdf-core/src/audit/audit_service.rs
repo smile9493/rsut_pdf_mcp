@@ -22,10 +22,7 @@ pub enum AuditBackend {
         table_name: String,
     },
     /// Remote service backend (placeholder)
-    Remote {
-        endpoint: String,
-        api_key: String,
-    },
+    Remote { endpoint: String, api_key: String },
     /// Memory backend (for testing)
     Memory,
 }
@@ -52,17 +49,16 @@ impl AuditService {
             AuditBackendConfig::File { log_dir } => AuditBackend::File {
                 log_dir: PathBuf::from(log_dir),
             },
-            AuditBackendConfig::Database { connection_string, table_name } => {
-                AuditBackend::Database {
-                    connection_string: connection_string.clone(),
-                    table_name: table_name.clone(),
-                }
+            AuditBackendConfig::Database {
+                connection_string,
+                table_name,
+            } => AuditBackend::Database {
+                connection_string: connection_string.clone(),
+                table_name: table_name.clone(),
             },
-            AuditBackendConfig::Remote { endpoint, api_key } => {
-                AuditBackend::Remote {
-                    endpoint: endpoint.clone(),
-                    api_key: api_key.clone(),
-                }
+            AuditBackendConfig::Remote { endpoint, api_key } => AuditBackend::Remote {
+                endpoint: endpoint.clone(),
+                api_key: api_key.clone(),
             },
             AuditBackendConfig::Memory => AuditBackend::Memory,
         };
@@ -73,27 +69,22 @@ impl AuditService {
     /// Record an extraction audit
     pub async fn log_extraction(&self, audit: ExtractionAudit) -> PdfResult<()> {
         match &self.backend {
-            AuditBackend::File { log_dir } => {
-                self.log_to_file(log_dir, &audit).await
-            },
-            AuditBackend::Database { .. } => {
-                self.log_to_database(&audit).await
-            },
-            AuditBackend::Remote { .. } => {
-                self.log_to_remote(&audit).await
-            },
+            AuditBackend::File { log_dir } => self.log_to_file(log_dir, &audit).await,
+            AuditBackend::Database { .. } => self.log_to_database(&audit).await,
+            AuditBackend::Remote { .. } => self.log_to_remote(&audit).await,
             AuditBackend::Memory => {
                 // Memory backend: just log (for testing)
                 tracing::debug!("Audit logged to memory: {:?}", audit.id);
                 Ok(())
-            },
+            }
         }
     }
 
     /// Log to file backend
     async fn log_to_file(&self, log_dir: &Path, audit: &ExtractionAudit) -> PdfResult<()> {
-        tokio::fs::create_dir_all(log_dir).await
-            .map_err(|e| PdfModuleError::AuditError(format!("Failed to create log directory: {}", e)))?;
+        tokio::fs::create_dir_all(log_dir).await.map_err(|e| {
+            PdfModuleError::AuditError(format!("Failed to create log directory: {}", e))
+        })?;
 
         let date = audit.created_at.format("%Y-%m-%d").to_string();
         let filename = format!("audit_{}.jsonl", date);
@@ -109,10 +100,12 @@ impl AuditService {
             .await
             .map_err(|e| PdfModuleError::AuditError(format!("Failed to open audit file: {}", e)))?;
 
-        file.write_all(line.as_bytes()).await
+        file.write_all(line.as_bytes())
+            .await
             .map_err(|e| PdfModuleError::AuditError(format!("Failed to write audit: {}", e)))?;
 
-        file.write_all(b"\n").await
+        file.write_all(b"\n")
+            .await
             .map_err(|e| PdfModuleError::AuditError(format!("Failed to write newline: {}", e)))?;
 
         Ok(())
@@ -133,18 +126,13 @@ impl AuditService {
     }
 
     /// Query audit records
-    pub async fn query_audits(
-        &self,
-        filters: AuditFilters,
-    ) -> PdfResult<Vec<ExtractionAudit>> {
+    pub async fn query_audits(&self, filters: AuditFilters) -> PdfResult<Vec<ExtractionAudit>> {
         match &self.backend {
-            AuditBackend::File { log_dir } => {
-                self.query_from_file(log_dir, filters).await
-            },
+            AuditBackend::File { log_dir } => self.query_from_file(log_dir, filters).await,
             _ => {
                 // TODO: Implement query for other backends
                 Ok(vec![])
-            },
+            }
         }
     }
 
@@ -159,21 +147,28 @@ impl AuditService {
         // If no date filters specified, query all files in directory
         if filters.start_date.is_none() {
             if log_dir.exists() {
-                let mut entries = tokio::fs::read_dir(log_dir).await
-                    .map_err(|e| PdfModuleError::AuditError(format!("Failed to read log directory: {}", e)))?;
+                let mut entries = tokio::fs::read_dir(log_dir).await.map_err(|e| {
+                    PdfModuleError::AuditError(format!("Failed to read log directory: {}", e))
+                })?;
 
-                while let Some(entry) = entries.next_entry().await
-                    .map_err(|e| PdfModuleError::AuditError(format!("Failed to read directory entry: {}", e)))? 
-                {
+                while let Some(entry) = entries.next_entry().await.map_err(|e| {
+                    PdfModuleError::AuditError(format!("Failed to read directory entry: {}", e))
+                })? {
                     let path = entry.path();
                     if path.is_file() {
                         if let Some(filename) = path.file_name().and_then(|s| s.to_str()) {
                             if filename.starts_with("audit_") && filename.ends_with(".jsonl") {
-                                let content = tokio::fs::read_to_string(&path).await
-                                    .map_err(|e| PdfModuleError::AuditError(format!("Failed to read audit file: {}", e)))?;
+                                let content =
+                                    tokio::fs::read_to_string(&path).await.map_err(|e| {
+                                        PdfModuleError::AuditError(format!(
+                                            "Failed to read audit file: {}",
+                                            e
+                                        ))
+                                    })?;
 
                                 for line in content.lines() {
-                                    if let Ok(audit) = serde_json::from_str::<ExtractionAudit>(line) {
+                                    if let Ok(audit) = serde_json::from_str::<ExtractionAudit>(line)
+                                    {
                                         if filters.matches(&audit) {
                                             audits.push(audit);
                                         }
@@ -185,7 +180,9 @@ impl AuditService {
                 }
             }
         } else if let Some(start_date) = filters.start_date {
-            let end_date = filters.end_date.unwrap_or_else(|| chrono::Utc::now().naive_utc().date());
+            let end_date = filters
+                .end_date
+                .unwrap_or_else(|| chrono::Utc::now().naive_utc().date());
             let mut current_date = start_date;
 
             while current_date <= end_date {
@@ -193,8 +190,9 @@ impl AuditService {
                 let filepath = log_dir.join(filename);
 
                 if filepath.exists() {
-                    let content = tokio::fs::read_to_string(&filepath).await
-                        .map_err(|e| PdfModuleError::AuditError(format!("Failed to read audit file: {}", e)))?;
+                    let content = tokio::fs::read_to_string(&filepath).await.map_err(|e| {
+                        PdfModuleError::AuditError(format!("Failed to read audit file: {}", e))
+                    })?;
 
                     for line in content.lines() {
                         if let Ok(audit) = serde_json::from_str::<ExtractionAudit>(line) {
@@ -215,44 +213,49 @@ impl AuditService {
     /// Clean up old audit logs
     pub async fn cleanup_old_logs(&self) -> PdfResult<usize> {
         match &self.backend {
-            AuditBackend::File { log_dir } => {
-                self.cleanup_file_logs(log_dir).await
-            },
+            AuditBackend::File { log_dir } => self.cleanup_file_logs(log_dir).await,
             _ => {
                 // TODO: Implement cleanup for other backends
                 Ok(0)
-            },
+            }
         }
     }
 
     /// Clean up old file logs
     async fn cleanup_file_logs(&self, log_dir: &Path) -> PdfResult<usize> {
-        let cutoff_date = chrono::Utc::now().naive_utc().date() - chrono::Duration::days(self.retention_days as i64);
+        let cutoff_date = chrono::Utc::now().naive_utc().date()
+            - chrono::Duration::days(self.retention_days as i64);
         let mut cleaned_count = 0;
 
         if !log_dir.exists() {
             return Ok(0);
         }
 
-        let mut entries = tokio::fs::read_dir(log_dir).await
-            .map_err(|e| PdfModuleError::AuditError(format!("Failed to read log directory: {}", e)))?;
+        let mut entries = tokio::fs::read_dir(log_dir).await.map_err(|e| {
+            PdfModuleError::AuditError(format!("Failed to read log directory: {}", e))
+        })?;
 
-        while let Some(entry) = entries.next_entry().await
-            .map_err(|e| PdfModuleError::AuditError(format!("Failed to read directory entry: {}", e)))? 
-        {
+        while let Some(entry) = entries.next_entry().await.map_err(|e| {
+            PdfModuleError::AuditError(format!("Failed to read directory entry: {}", e))
+        })? {
             let path = entry.path();
             if path.is_file() {
                 if let Some(filename) = path.file_name().and_then(|s| s.to_str()) {
                     if filename.starts_with("audit_") && filename.ends_with(".jsonl") {
                         // Extract date from filename
-                        let date_str = filename.strip_prefix("audit_")
+                        let date_str = filename
+                            .strip_prefix("audit_")
                             .and_then(|s| s.strip_suffix(".jsonl"));
 
                         if let Some(date_str) = date_str {
                             if let Ok(file_date) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
                                 if file_date < cutoff_date {
-                                    tokio::fs::remove_file(&path).await
-                                        .map_err(|e| PdfModuleError::AuditError(format!("Failed to remove old log file: {}", e)))?;
+                                    tokio::fs::remove_file(&path).await.map_err(|e| {
+                                        PdfModuleError::AuditError(format!(
+                                            "Failed to remove old log file: {}",
+                                            e
+                                        ))
+                                    })?;
                                     cleaned_count += 1;
                                 }
                             }
@@ -377,7 +380,9 @@ mod tests {
         let log_dir = temp_dir.path().join("audit");
 
         let service = AuditService::new(
-            AuditBackend::File { log_dir: log_dir.clone() },
+            AuditBackend::File {
+                log_dir: log_dir.clone(),
+            },
             30,
         );
 
@@ -398,7 +403,11 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify file was created
-        let date = chrono::Utc::now().naive_utc().date().format("%Y-%m-%d").to_string();
+        let date = chrono::Utc::now()
+            .naive_utc()
+            .date()
+            .format("%Y-%m-%d")
+            .to_string();
         let filename = format!("audit_{}.jsonl", date);
         let filepath = log_dir.join(filename);
         assert!(filepath.exists());
@@ -415,7 +424,9 @@ mod tests {
         let log_dir = temp_dir.path().join("audit");
 
         let service = AuditService::new(
-            AuditBackend::File { log_dir: log_dir.clone() },
+            AuditBackend::File {
+                log_dir: log_dir.clone(),
+            },
             30,
         );
 
@@ -471,7 +482,9 @@ mod tests {
         let log_dir = temp_dir.path().join("audit");
 
         let service = AuditService::new(
-            AuditBackend::File { log_dir: log_dir.clone() },
+            AuditBackend::File {
+                log_dir: log_dir.clone(),
+            },
             1, // 1 day retention
         );
 
@@ -479,7 +492,7 @@ mod tests {
         let old_date = chrono::Utc::now().naive_utc().date() - chrono::Duration::days(2);
         let old_filename = format!("audit_{}.jsonl", old_date.format("%Y-%m-%d"));
         let old_filepath = log_dir.join(old_filename);
-        
+
         // Ensure directory exists before writing
         tokio::fs::create_dir_all(&log_dir).await.unwrap();
         tokio::fs::write(&old_filepath, "test").await.unwrap();
@@ -504,7 +517,11 @@ mod tests {
         assert!(!old_filepath.exists());
 
         // Verify recent file still exists
-        let recent_date = chrono::Utc::now().naive_utc().date().format("%Y-%m-%d").to_string();
+        let recent_date = chrono::Utc::now()
+            .naive_utc()
+            .date()
+            .format("%Y-%m-%d")
+            .to_string();
         let recent_filename = format!("audit_{}.jsonl", recent_date);
         let recent_filepath = log_dir.join(recent_filename);
         assert!(recent_filepath.exists());
@@ -512,10 +529,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_audit_service_memory_backend() {
-        let service = AuditService::new(
-            AuditBackend::Memory,
-            30,
-        );
+        let service = AuditService::new(AuditBackend::Memory, 30);
 
         let audit = ExtractionAudit::new(
             "test.pdf".to_string(),

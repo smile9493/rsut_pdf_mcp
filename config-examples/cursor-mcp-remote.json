@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "pdf-module-remote": {
+      "url": "http://YOUR_SERVER_IP:8001/sse",
+      "transport": "sse"
+    }
+  }
+}

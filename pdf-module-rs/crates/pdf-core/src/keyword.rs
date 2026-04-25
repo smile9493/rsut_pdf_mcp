@@ -2,43 +2,35 @@
 //! Corresponds to Python: keyword_extractor.py
 
 use crate::dto::{KeywordMatch, KeywordSearchResult, LineInfo, PageMetadata};
+use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
-use std::sync::Mutex;
 
 /// Pre-compiled regex for English word extraction
-static ENGLISH_WORD_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"[a-zA-Z]{2,}").expect("Invalid regex pattern for English words")
-});
+static ENGLISH_WORD_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"[a-zA-Z]{2,}").expect("Invalid regex pattern for English words"));
 
-/// Global regex cache for keyword patterns
+/// Global regex cache for keyword patterns (lock-free using DashMap)
 /// Key: (pattern, case_sensitive), Value: compiled Regex
-static REGEX_CACHE: Lazy<Mutex<HashMap<String, Regex>>> = Lazy::new(|| {
-    Mutex::new(HashMap::new())
-});
+static REGEX_CACHE: Lazy<DashMap<String, Regex>> = Lazy::new(DashMap::new);
 
 /// Global Jieba instance for Chinese segmentation
-static JIEBA: Lazy<jieba_rs::Jieba> = Lazy::new(|| {
-    jieba_rs::Jieba::new()
-});
+static JIEBA: Lazy<jieba_rs::Jieba> = Lazy::new(jieba_rs::Jieba::new);
 
-/// Get or create a cached regex for a keyword
+/// Get or create a cached regex for a keyword (lock-free)
 fn get_cached_regex(keyword: &str, case_sensitive: bool) -> Option<Regex> {
     let cache_key = if case_sensitive {
         format!("cs:{}", keyword)
     } else {
         format!("ci:{}", keyword)
     };
-    
-    // Try to get from cache first
-    {
-        let cache = REGEX_CACHE.lock().unwrap();
-        if let Some(re) = cache.get(&cache_key) {
-            return Some(re.clone());
-        }
+
+    // Try to get from cache first (lock-free read)
+    if let Some(re) = REGEX_CACHE.get(&cache_key) {
+        return Some(re.clone());
     }
-    
+
     // Compile new regex
     let pattern = regex::escape(keyword);
     let re = if case_sensitive {
@@ -46,13 +38,12 @@ fn get_cached_regex(keyword: &str, case_sensitive: bool) -> Option<Regex> {
     } else {
         Regex::new(&format!("(?i){}", pattern)).ok()
     };
-    
+
     // Store in cache if valid
     if let Some(ref regex) = re {
-        let mut cache = REGEX_CACHE.lock().unwrap();
-        cache.insert(cache_key, regex.clone());
+        REGEX_CACHE.insert(cache_key, regex.clone());
     }
-    
+
     re
 }
 
@@ -161,7 +152,7 @@ impl KeywordExtractor {
 
         // Sort by frequency and take top N
         let mut sorted: Vec<_> = word_counts.into_iter().collect();
-        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted.sort_by_key(|a| std::cmp::Reverse(a.1));
         sorted.into_iter().take(top_n).collect()
     }
 
@@ -192,11 +183,10 @@ impl KeywordExtractor {
         _position: usize,
     ) -> Option<(f64, f64, f64, f64)> {
         for line in lines {
-            if line.text.contains(text) {
-                if line.bbox.len() == 4 {
+            if line.text.contains(text)
+                && line.bbox.len() == 4 {
                     return Some((line.bbox[0], line.bbox[1], line.bbox[2], line.bbox[3]));
                 }
-            }
         }
         None
     }
@@ -236,14 +226,14 @@ mod tests {
 
         // Verify result is not empty
         assert!(!result.is_empty());
-        
+
         // Verify "world" is in the results
         // Note: jieba may segment differently, so we just check presence
         assert!(result.iter().any(|(word, _)| word == "world"));
-        
+
         // Verify "hello" is in the results
         assert!(result.iter().any(|(word, _)| word == "hello"));
-        
+
         // Verify "rust" is in the results
         assert!(result.iter().any(|(word, _)| word == "rust"));
     }

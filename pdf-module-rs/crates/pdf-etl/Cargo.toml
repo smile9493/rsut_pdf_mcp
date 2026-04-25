@@ -1,0 +1,49 @@
+[package]
+name = "pdf-etl"
+version = "0.1.0"
+edition = "2021"
+description = "PDF ETL pipeline for structured extraction and database integration"
+authors = ["pdf-module-rs team"]
+license = "MIT"
+
+[dependencies]
+# Workspace dependencies
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+bytes = { workspace = true }
+
+# Schema
+schemars = "0.8"
+jsonschema = "0.18"
+
+# HTTP client for LLM
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+tiktoken-rs = "0.5"
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "mysql", "sqlite", "json", "chrono", "uuid"] }
+
+# Configuration
+dotenvy = { workspace = true }
+
+# PDF extraction
+lopdf = { workspace = true }
+
+# Validation
+validator = { version = "0.18", features = ["derive"] }
+regex = { workspace = true }
+
+# Internal crates
+pdf-core = { path = "../pdf-core" }
+
+[dev-dependencies]
+mockito = "1.4"
+tokio-test = "0.4"

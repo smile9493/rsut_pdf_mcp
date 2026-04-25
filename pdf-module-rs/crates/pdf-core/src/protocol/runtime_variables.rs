@@ -43,9 +43,10 @@ impl RuntimeVariables {
     pub fn validate(&self) -> PdfResult<()> {
         // Check var_type is "object"
         if self.var_type != "object" {
-            return Err(PdfModuleError::InvalidToolDefinition(
-                format!("var_type must be 'object', got '{}'", self.var_type),
-            ));
+            return Err(PdfModuleError::InvalidToolDefinition(format!(
+                "var_type must be 'object', got '{}'",
+                self.var_type
+            )));
         }
 
         // Check title is not empty
@@ -359,7 +360,10 @@ mod tests {
         vars.add_variable("cache_dir".to_string(), property, false);
 
         // Test setting value (should succeed)
-        let result = vars.set_value("cache_dir", serde_json::Value::String("/tmp/cache".to_string()));
+        let result = vars.set_value(
+            "cache_dir",
+            serde_json::Value::String("/tmp/cache".to_string()),
+        );
         assert!(result.is_ok());
 
         // Test getting value (should return null placeholder)
@@ -368,7 +372,10 @@ mod tests {
         assert_eq!(value.unwrap(), serde_json::Value::Null);
 
         // Test setting value for non-existent variable (should fail)
-        let result = vars.set_value("nonexistent", serde_json::Value::String("value".to_string()));
+        let result = vars.set_value(
+            "nonexistent",
+            serde_json::Value::String("value".to_string()),
+        );
         assert!(result.is_err());
 
         // Test getting value for non-existent variable (should fail)

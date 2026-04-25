@@ -6,10 +6,10 @@ use crate::error::{PdfModuleError, PdfResult};
 use crate::storage::file_storage::FileStorage;
 use async_trait::async_trait;
 use bytes::Bytes;
+use chrono::{DateTime, Utc};
 use std::path::PathBuf;
 use tokio::fs;
 use walkdir::WalkDir;
-use chrono::{DateTime, Utc};
 
 /// Local file system storage implementation
 pub struct LocalFileStorage {
@@ -22,23 +22,16 @@ impl LocalFileStorage {
         Self { base_dir }
     }
 
-    /// Get the full path for a relative path
-    fn resolve_path(&self, path: &str) -> PathBuf {
-        let path = path.trim_start_matches('/');
-        let path = path.trim_start_matches('\\');
-        self.base_dir.join(path)
-    }
-
     /// Sanitize a path to prevent directory traversal
     fn sanitize_path(&self, path: &str) -> PdfResult<PathBuf> {
-        let path = path.trim_start_matches('/')
-            .trim_start_matches('\\');
+        let path = path.trim_start_matches('/').trim_start_matches('\\');
 
         // Check for path traversal attempts
         if path.contains("..") || path.contains("~") {
-            return Err(PdfModuleError::StorageError(
-                format!("Invalid path: {}", path),
-            ));
+            return Err(PdfModuleError::StorageError(format!(
+                "Invalid path: {}",
+                path
+            )));
         }
 
         Ok(self.base_dir.join(path))
@@ -49,21 +42,24 @@ impl LocalFileStorage {
 impl FileStorage for LocalFileStorage {
     async fn read(&self, path: &str) -> PdfResult<Bytes> {
         let full_path = self.sanitize_path(path)?;
-        let data = fs::read(&full_path).await
+        let data = fs::read(&full_path)
+            .await
             .map_err(|e| PdfModuleError::StorageError(format!("Failed to read file: {}", e)))?;
         Ok(Bytes::from(data))
     }
 
     async fn write(&self, path: &str, data: &[u8]) -> PdfResult<()> {
         let full_path = self.sanitize_path(path)?;
-        
+
         // Ensure parent directory exists
         if let Some(parent) = full_path.parent() {
-            fs::create_dir_all(parent).await
-                .map_err(|e| PdfModuleError::StorageError(format!("Failed to create directory: {}", e)))?;
+            fs::create_dir_all(parent).await.map_err(|e| {
+                PdfModuleError::StorageError(format!("Failed to create directory: {}", e))
+            })?;
         }
 
-        fs::write(&full_path, data).await
+        fs::write(&full_path, data)
+            .await
             .map_err(|e| PdfModuleError::StorageError(format!("Failed to write file: {}", e)))?;
         Ok(())
     }
@@ -75,7 +71,8 @@ impl FileStorage for LocalFileStorage {
 
     async fn delete(&self, path: &str) -> PdfResult<()> {
         let full_path = self.sanitize_path(path)?;
-        fs::remove_file(&full_path).await
+        fs::remove_file(&full_path)
+            .await
             .map_err(|e| PdfModuleError::StorageError(format!("Failed to delete file: {}", e)))?;
         Ok(())
     }
@@ -85,11 +82,17 @@ impl FileStorage for LocalFileStorage {
         let mut files = vec![];
 
         if !full_path.exists() {
-            return Err(PdfModuleError::StorageError(format!("Path does not exist: {}", path)));
+            return Err(PdfModuleError::StorageError(format!(
+                "Path does not exist: {}",
+                path
+            )));
         }
 
         if !full_path.is_dir() {
-            return Err(PdfModuleError::StorageError(format!("Path is not a directory: {}", path)));
+            return Err(PdfModuleError::StorageError(format!(
+                "Path is not a directory: {}",
+                path
+            )));
         }
 
         if recursive {
@@ -98,24 +101,27 @@ impl FileStorage for LocalFileStorage {
                 .filter_map(|e| e.ok())
                 .filter(|e| e.file_type().is_file())
             {
-                let metadata = entry.metadata()
-                    .map_err(|e| PdfModuleError::StorageError(format!("Failed to get metadata: {}", e)))?;
+                let metadata = entry.metadata().map_err(|e| {
+                    PdfModuleError::StorageError(format!("Failed to get metadata: {}", e))
+                })?;
                 files.push(StorageFileInfo {
                     path: entry.path().to_string_lossy().to_string(),
                     size: metadata.len(),
                 });
             }
         } else {
-            let mut entries = fs::read_dir(&full_path).await
-                .map_err(|e| PdfModuleError::StorageError(format!("Failed to read directory: {}", e)))?;
+            let mut entries = fs::read_dir(&full_path).await.map_err(|e| {
+                PdfModuleError::StorageError(format!("Failed to read directory: {}", e))
+            })?;
 
-            while let Some(entry) = entries.next_entry().await
-                .map_err(|e| PdfModuleError::StorageError(format!("Failed to read directory entry: {}", e)))? 
-            {
+            while let Some(entry) = entries.next_entry().await.map_err(|e| {
+                PdfModuleError::StorageError(format!("Failed to read directory entry: {}", e))
+            })? {
                 let path = entry.path();
                 if path.is_file() {
-                    let metadata = entry.metadata().await
-                        .map_err(|e| PdfModuleError::StorageError(format!("Failed to get metadata: {}", e)))?;
+                    let metadata = entry.metadata().await.map_err(|e| {
+                        PdfModuleError::StorageError(format!("Failed to get metadata: {}", e))
+                    })?;
                     files.push(StorageFileInfo {
                         path: path.to_string_lossy().to_string(),
                         size: metadata.len(),
@@ -129,11 +135,15 @@ impl FileStorage for LocalFileStorage {
 
     async fn metadata(&self, path: &str) -> PdfResult<FileMetadata> {
         let full_path = self.sanitize_path(path)?;
-        let metadata = fs::metadata(&full_path).await
+        let metadata = fs::metadata(&full_path)
+            .await
             .map_err(|e| PdfModuleError::StorageError(format!("Failed to get metadata: {}", e)))?;
-        
-        let modified: DateTime<Utc> = metadata.modified()
-            .map_err(|e| PdfModuleError::StorageError(format!("Failed to get modified time: {}", e)))?
+
+        let modified: DateTime<Utc> = metadata
+            .modified()
+            .map_err(|e| {
+                PdfModuleError::StorageError(format!("Failed to get modified time: {}", e))
+            })?
             .into();
 
         // TODO: Implement content type detection using infer crate
@@ -204,8 +214,11 @@ mod tests {
         // List files (non-recursive)
         let files = storage.list(".", false).await.unwrap();
         assert_eq!(files.len(), 2);
-        
-        let file_names: Vec<&str> = files.iter().map(|f| f.path.rsplit('/').next().unwrap_or("")).collect();
+
+        let file_names: Vec<&str> = files
+            .iter()
+            .map(|f| f.path.rsplit('/').next().unwrap_or(""))
+            .collect();
         assert!(file_names.contains(&"file1.txt"));
         assert!(file_names.contains(&"file2.txt"));
     }
@@ -216,15 +229,20 @@ mod tests {
         let storage = LocalFileStorage::new(temp_dir.path().to_path_buf());
 
         // Create files in subdirectory
-        fs::create_dir_all(temp_dir.path().join("subdir")).await.unwrap();
+        fs::create_dir_all(temp_dir.path().join("subdir"))
+            .await
+            .unwrap();
         storage.write("subdir/file1.txt", b"test1").await.unwrap();
         storage.write("file2.txt", b"test2").await.unwrap();
 
         // List files recursively
         let files = storage.list(".", true).await.unwrap();
         assert_eq!(files.len(), 2);
-        
-        let file_names: Vec<&str> = files.iter().map(|f| f.path.rsplit('/').next().unwrap_or("")).collect();
+
+        let file_names: Vec<&str> = files
+            .iter()
+            .map(|f| f.path.rsplit('/').next().unwrap_or(""))
+            .collect();
         assert!(file_names.contains(&"file1.txt"));
         assert!(file_names.contains(&"file2.txt"));
     }

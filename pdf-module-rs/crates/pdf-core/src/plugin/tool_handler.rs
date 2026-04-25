@@ -1,13 +1,13 @@
 //! Tool handler trait
 //! Defines the interface for tool execution and management
 
-use crate::dto::{ToolExecutionResult, ExecutionMetadata};
-use crate::error::{PdfModuleError, PdfResult};
-use crate::protocol::{ToolDefinition, ToolSpec, RuntimeVariables};
+use crate::dto::{ExecutionMetadata, ToolExecutionResult};
+use crate::error::PdfResult;
+use crate::protocol::{RuntimeVariables, ToolDefinition, ToolSpec};
 use crate::streamer::MessageStreamer;
 use async_trait::async_trait;
-use std::collections::HashMap;
 use serde_json::Value;
+use std::collections::HashMap;
 
 /// Tool handler trait
 /// Defines the interface for tool execution and lifecycle management
@@ -53,6 +53,31 @@ pub trait ToolHandler: Send + Sync {
     /// Get tool description
     fn description(&self) -> &str {
         &self.definition().description
+    }
+
+    /// Lifecycle hook: called when tool is registered
+    async fn on_register(&self) -> PdfResult<()> {
+        Ok(())
+    }
+
+    /// Lifecycle hook: called when tool is unregistered
+    async fn on_unregister(&self) -> PdfResult<()> {
+        Ok(())
+    }
+
+    /// Get capability tags
+    fn capabilities(&self) -> Vec<String> {
+        vec![]
+    }
+
+    /// Get tool category
+    fn category(&self) -> String {
+        "general".to_string()
+    }
+
+    /// Get tool dependencies
+    fn dependencies(&self) -> Vec<String> {
+        vec![]
     }
 }
 
@@ -133,9 +158,8 @@ pub struct ToolExecutionOptions {
     pub additional: HashMap<String, Value>,
 }
 
-impl ToolExecutionOptions {
-    /// Create default execution options
-    pub fn default() -> Self {
+impl Default for ToolExecutionOptions {
+    fn default() -> Self {
         Self {
             enable_streaming: false,
             timeout: None,
@@ -144,7 +168,9 @@ impl ToolExecutionOptions {
             additional: HashMap::new(),
         }
     }
+}
 
+impl ToolExecutionOptions {
     /// Enable streaming
     pub fn with_streaming(mut self) -> Self {
         self.enable_streaming = true;
@@ -173,12 +199,6 @@ impl ToolExecutionOptions {
     pub fn with_option(mut self, key: String, value: Value) -> Self {
         self.additional.insert(key, value);
         self
-    }
-}
-
-impl Default for ToolExecutionOptions {
-    fn default() -> Self {
-        Self::default()
     }
 }
 
@@ -226,6 +246,9 @@ mod tests {
         assert_eq!(options.timeout, Some(60));
         assert!(!options.enable_cache);
         assert!(!options.enable_metrics);
-        assert_eq!(options.additional.get("custom_key"), Some(&serde_json::json!("custom_value")));
+        assert_eq!(
+            options.additional.get("custom_key"),
+            Some(&serde_json::json!("custom_value"))
+        );
     }
 }

@@ -2,13 +2,12 @@
 //! Corresponds to Python: config.py
 
 use crate::dto::{
-    Environment, LocalStorageConfig, S3StorageConfig, GCSStorageConfig,
-    AzureStorageConfig, StorageType, LogLevel, LogFormat, LogOutput,
+    AzureStorageConfig, Environment, GCSStorageConfig, LocalStorageConfig, LogFormat,
+    LogOutput, S3StorageConfig, StorageType,
 };
 use crate::error::PdfModuleError;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use tracing_subscriber::{layer::SubscriberExt, EnvFilter, fmt};
+use tracing_subscriber::EnvFilter;
 
 // === Configuration Structures ===
 
@@ -55,7 +54,9 @@ impl Default for CacheConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum AuditBackendConfig {
-    File { log_dir: String },
+    File {
+        log_dir: String,
+    },
     Database {
         connection_string: String,
         table_name: String,
@@ -172,6 +173,7 @@ impl Default for FileStorageConfig {
 
 /// Complete server configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct ServerConfig {
     /// Base configuration
     pub base: BaseConfig,
@@ -192,18 +194,6 @@ pub struct ServerConfig {
     pub security: SecurityConfig,
 }
 
-impl Default for ServerConfig {
-    fn default() -> Self {
-        Self {
-            base: BaseConfig::default(),
-            storage: FileStorageConfig::default(),
-            cache: CacheConfig::default(),
-            audit: AuditConfig::default(),
-            logging: LoggingConfig::default(),
-            security: SecurityConfig::default(),
-        }
-    }
-}
 
 impl ServerConfig {
     /// Load configuration from environment variables
@@ -261,8 +251,7 @@ impl ServerConfig {
                 },
                 s3: if storage_type == StorageType::S3 {
                     Some(S3StorageConfig {
-                        bucket: std::env::var("S3_BUCKET")
-                            .unwrap_or_else(|_| "".to_string()),
+                        bucket: std::env::var("S3_BUCKET").unwrap_or_else(|_| "".to_string()),
                         region: std::env::var("S3_REGION")
                             .unwrap_or_else(|_| "us-east-1".to_string()),
                         prefix: std::env::var("S3_PREFIX").ok(),
@@ -275,8 +264,7 @@ impl ServerConfig {
                 },
                 gcs: if storage_type == StorageType::Gcs {
                     Some(GCSStorageConfig {
-                        bucket: std::env::var("GCS_BUCKET")
-                            .unwrap_or_else(|_| "".to_string()),
+                        bucket: std::env::var("GCS_BUCKET").unwrap_or_else(|_| "".to_string()),
                         credentials_path: std::env::var("GCS_CREDENTIALS_PATH")
                             .unwrap_or_else(|_| "".to_string()),
                     })
@@ -287,8 +275,7 @@ impl ServerConfig {
                     Some(AzureStorageConfig {
                         account: std::env::var("AZURE_STORAGE_ACCOUNT")
                             .unwrap_or_else(|_| "".to_string()),
-                        key: std::env::var("AZURE_STORAGE_KEY")
-                            .unwrap_or_else(|_| "".to_string()),
+                        key: std::env::var("AZURE_STORAGE_KEY").unwrap_or_else(|_| "".to_string()),
                         container: std::env::var("AZURE_CONTAINER")
                             .unwrap_or_else(|_| "".to_string()),
                     })
@@ -345,8 +332,7 @@ impl ServerConfig {
                     .unwrap_or(30),
             },
             logging: LoggingConfig {
-                level: std::env::var("LOG_LEVEL")
-                    .unwrap_or_else(|_| "info".to_string()),
+                level: std::env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
                 format: log_format,
                 outputs: vec![LogOutput::Stdout],
             },
@@ -373,8 +359,9 @@ impl ServerConfig {
 
     /// Load configuration from a file (TOML, JSON, or YAML)
     pub fn from_file(path: &str) -> Result<Self, PdfModuleError> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| PdfModuleError::ConfigError(format!("Failed to read config file: {}", e)))?;
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            PdfModuleError::ConfigError(format!("Failed to read config file: {}", e))
+        })?;
 
         let ext = std::path::Path::new(path)
             .extension()
@@ -388,7 +375,12 @@ impl ServerConfig {
                 .map_err(|e| PdfModuleError::ConfigError(format!("Failed to parse JSON: {}", e)))?,
             "yaml" | "yml" => serde_yaml::from_str(&content)
                 .map_err(|e| PdfModuleError::ConfigError(format!("Failed to parse YAML: {}", e)))?,
-            _ => return Err(PdfModuleError::ConfigError(format!("Unsupported config format: {}", ext))),
+            _ => {
+                return Err(PdfModuleError::ConfigError(format!(
+                    "Unsupported config format: {}",
+                    ext
+                )))
+            }
         };
 
         config.validate()?;
@@ -399,20 +391,18 @@ impl ServerConfig {
     pub fn validate(&self) -> Result<(), PdfModuleError> {
         // Validate storage configuration
         match self.storage.storage_type {
-            StorageType::Local => {
-                if self.storage.local.is_none() {
+            StorageType::Local
+                if self.storage.local.is_none() => {
                     return Err(PdfModuleError::ConfigError(
                         "Local storage config is required for local storage type".to_string(),
                     ));
                 }
-            }
-            StorageType::S3 => {
-                if self.storage.s3.is_none() {
+            StorageType::S3
+                if self.storage.s3.is_none() => {
                     return Err(PdfModuleError::ConfigError(
                         "S3 storage config is required for S3 storage type".to_string(),
                     ));
                 }
-            }
             _ => {}
         }
 
@@ -436,8 +426,8 @@ impl ServerConfig {
             _ => tracing::Level::INFO,
         };
 
-        let _env_filter = EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| EnvFilter::new(level.as_str()));
+        let _env_filter =
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level.as_str()));
 
         let subscriber = tracing_subscriber::fmt()
             .with_max_level(level)

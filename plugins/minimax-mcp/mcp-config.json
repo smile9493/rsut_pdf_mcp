@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "pdf-module": {
+      "command": "docker",
+      "args": [
+        "exec",
+        "-i",
+        "pdf-module-api",
+        "pdf-mcp",
+        "serve",
+        "--transport",
+        "stdio"
+      ]
+    },
+    "minimax": {
+      "command": "uvx",
+      "args": ["minimax-mcp"],
+      "env": {
+        "MINIMAX_API_KEY": "your-minimax-api-key"
+      }
+    }
+  }
+}

@@ -2,7 +2,7 @@
 //! Defines the various message types used in MCP tool communication
 
 use crate::dto::{LogLevel, ToolExecutionResult};
-use crate::protocol::{ToolDefinition, ToolSpec, RuntimeVariables};
+use crate::protocol::{RuntimeVariables, ToolDefinition, ToolSpec};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -190,7 +190,9 @@ impl ToolMessage {
     /// Get the cost content if this is a cost message
     pub fn as_cost(&self) -> Option<(&f64, &str)> {
         match self {
-            Self::Cost { cost, cost_units, .. } => Some((cost, cost_units)),
+            Self::Cost {
+                cost, cost_units, ..
+            } => Some((cost, cost_units)),
             _ => None,
         }
     }
@@ -253,10 +255,7 @@ mod tests {
 
     #[test]
     fn test_tool_message_spec() {
-        let spec = ToolSpec::new(
-            "Test Config".to_string(),
-            "Test configuration".to_string(),
-        );
+        let spec = ToolSpec::new("Test Config".to_string(), "Test configuration".to_string());
 
         let message = ToolMessage::spec(spec);
         assert_eq!(message.message_type(), "Spec");
@@ -281,10 +280,7 @@ mod tests {
     fn test_tool_message_all_types() {
         // Test all message types can be created and serialized
         let messages = vec![
-            ToolMessage::spec(ToolSpec::new(
-                "Test".to_string(),
-                "Test".to_string(),
-            )),
+            ToolMessage::spec(ToolSpec::new("Test".to_string(), "Test".to_string())),
             ToolMessage::properties(ToolDefinition::new(
                 "Test".to_string(),
                 "test".to_string(),

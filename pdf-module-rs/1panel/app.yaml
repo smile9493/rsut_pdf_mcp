@@ -1,0 +1,135 @@
+name: pdf-etl
+version: 1.0.0
+description: PDF 结构化提取与数据库对接服务
+author: pdf-module-rs team
+website: https://github.com/pdf-module-rs/pdf-etl
+documentation: https://github.com/pdf-module-rs/pdf-etl#readme
+
+# 应用图标
+icon: https://raw.githubusercontent.com/pdf-module-rs/pdf-etl/main/docs/icon.png
+
+# 应用分类
+categories:
+  - AI
+  - Document Processing
+  - Database
+
+# 应用标签
+tags:
+  - pdf
+  - extraction
+  - llm
+  - etl
+  - structured-data
+  - openai
+  - postgresql
+
+# 支持的架构
+architectures:
+  - amd64
+  - arm64
+
+# 最小系统要求
+requirements:
+  cpu: 1
+  memory: 512
+  disk: 1
+
+# 服务定义
+services:
+  pdf-etl:
+    image: pdf-module-etl:latest
+    ports:
+      - 8000
+    env:
+      - key: LLM_PROVIDER
+        description: LLM 提供商 (openai/azure/ollama)
+        required: true
+        default: openai
+      - key: LLM_API_KEY
+        description: LLM API 密钥
+        required: true
+        type: password
+      - key: LLM_MODEL
+        description: 模型名称
+        required: false
+        default: gpt-4o
+      - key: DB_TYPE
+        description: 数据库类型 (postgres/mysql/sqlite)
+        required: true
+        default: postgres
+      - key: DB_CONNECTION_STRING
+        description: 数据库连接字符串
+        required: true
+        type: password
+      - key: DB_TABLE_NAME
+        description: 目标表名
+        required: false
+        default: extracted_documents
+    volumes:
+      - source: data
+        target: /app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  postgres:
+    image: postgres:16-alpine
+    env:
+      - key: POSTGRES_USER
+        description: PostgreSQL 用户名
+        required: true
+        default: postgres
+      - key: POSTGRES_PASSWORD
+        description: PostgreSQL 密码
+        required: true
+        type: password
+      - key: POSTGRES_DB
+        description: 数据库名称
+        required: true
+        default: pdf_etl
+    volumes:
+      - source: pg_data
+        target: /var/lib/postgresql/data
+
+# 配置表单
+form:
+  - field: llm_provider
+    label: LLM 提供商
+    type: select
+    options:
+      - openai
+      - azure
+      - ollama
+    default: openai
+    required: true
+
+  - field: llm_api_key
+    label: API 密钥
+    type: password
+    required: true
+    show_if: llm_provider != ollama
+
+  - field: llm_model
+    label: 模型名称
+    type: text
+    default: gpt-4o
+    required: false
+
+  - field: db_type
+    label: 数据库类型
+    type: select
+    options:
+      - postgres
+      - mysql
+      - sqlite
+    default: postgres
+    required: true
+
+  - field: db_password
+    label: 数据库密码
+    type: password
+    required: true
+    show_if: db_type != sqlite

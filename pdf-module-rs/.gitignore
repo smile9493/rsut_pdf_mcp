@@ -1,8 +1,95 @@
+# ==================== Rust ====================
 target/
+**/*.rs.bk
+*.pdb
+# Cargo.lock is checked in for binary crates, uncomment for libraries
+# Cargo.lock
+
+# ==================== Environment & Secrets ====================
 .env
-*.log
-.DS_Store
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+secrets/
+.secrets/
+
+# ==================== IDE ====================
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-workspace
+*.sublime-project
+.zed/
+
+# ==================== OS ====================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# ==================== Logs ====================
+*.log
+logs/
+
+# ==================== Data & Cache ====================
+data/
+cache/
+*.cache
+
+# ==================== Database ====================
+*.db
+*.sqlite
+*.sqlite3
+surrealdb-data/
+
+# ==================== Build Artifacts ====================
+*.exe
+*.dll
+*.dylib
+*.so
+*.zip
+*.tar.gz
+*.tgz
+
+# ==================== Temporary Files ====================
+tmp/
+temp/
+*.tmp
+*.bak
+*.backup
+
+# ==================== Docker ====================
+.docker/
+
+# ==================== Python (pdf-python crate) ====================
+__pycache__/
+*.py[cod]
+.Python
+*.egg-info/
+dist/
+.venv/
+venv/
+
+# ==================== Node.js ====================
+node_modules/
+
+# ==================== CodeArts ====================
+.arts/
+.codeartsdoer/
+
+# ==================== Test Coverage ====================
+tarpaulin-report.html
+cobertura.xml
+lcov.info
+coverage/

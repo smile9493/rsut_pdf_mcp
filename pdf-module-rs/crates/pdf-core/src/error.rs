@@ -29,7 +29,6 @@ pub enum PdfModuleError {
     IoError(#[from] std::io::Error),
 
     // === MCP Optimization Errors ===
-
     #[error("Tool registration failed: {0}")]
     ToolRegistrationError(String),
 
@@ -62,6 +61,31 @@ pub enum PdfModuleError {
 
     #[error("JSON error: {0}")]
     JsonError(#[from] serde_json::Error),
+
+    // === Plugin Architecture Errors ===
+    #[error("Tool '{0}' is already registered")]
+    ToolAlreadyRegistered(String),
+
+    #[error("Rate limit exceeded for tool '{0}'")]
+    RateLimitExceeded(String),
+
+    #[error("Circuit breaker is open for tool '{0}'")]
+    CircuitBreakerOpen(String),
+
+    #[error("Schema validation failed: {0}")]
+    SchemaValidationError(String),
+
+    #[error("Tool execution timeout after {0}ms")]
+    ExecutionTimeout(u64),
+
+    #[error("Tool '{0}' is unavailable: {1}")]
+    ToolUnavailable(String, String),
+
+    #[error("Discovery failed: {0}")]
+    DiscoveryError(String),
+
+    #[error("Control plane error: {0}")]
+    ControlPlaneError(String),
 }
 
 impl PdfModuleError {
@@ -86,6 +110,14 @@ impl PdfModuleError {
             Self::InvalidToolDefinition(_) => 400,
             Self::PluginLoadError(_) => 500,
             Self::JsonError(_) => 500,
+            Self::ToolAlreadyRegistered(_) => 409,
+            Self::RateLimitExceeded(_) => 429,
+            Self::CircuitBreakerOpen(_) => 503,
+            Self::SchemaValidationError(_) => 400,
+            Self::ExecutionTimeout(_) => 408,
+            Self::ToolUnavailable(_, _) => 503,
+            Self::DiscoveryError(_) => 500,
+            Self::ControlPlaneError(_) => 500,
         }
     }
 
@@ -110,6 +142,14 @@ impl PdfModuleError {
             Self::InvalidToolDefinition(_) => "InvalidToolDefinitionError",
             Self::PluginLoadError(_) => "PluginLoadError",
             Self::JsonError(_) => "JsonError",
+            Self::ToolAlreadyRegistered(_) => "ToolAlreadyRegisteredError",
+            Self::RateLimitExceeded(_) => "RateLimitExceededError",
+            Self::CircuitBreakerOpen(_) => "CircuitBreakerOpenError",
+            Self::SchemaValidationError(_) => "SchemaValidationError",
+            Self::ExecutionTimeout(_) => "ExecutionTimeoutError",
+            Self::ToolUnavailable(_, _) => "ToolUnavailableError",
+            Self::DiscoveryError(_) => "DiscoveryError",
+            Self::ControlPlaneError(_) => "ControlPlaneError",
         }
     }
 
@@ -133,12 +173,27 @@ mod tests {
 
     #[test]
     fn test_error_status_codes() {
-        assert_eq!(PdfModuleError::FileNotFound("test".into()).status_code(), 404);
-        assert_eq!(PdfModuleError::InvalidFileType("test".into()).status_code(), 400);
-        assert_eq!(PdfModuleError::FileTooLarge("test".into()).status_code(), 413);
+        assert_eq!(
+            PdfModuleError::FileNotFound("test".into()).status_code(),
+            404
+        );
+        assert_eq!(
+            PdfModuleError::InvalidFileType("test".into()).status_code(),
+            400
+        );
+        assert_eq!(
+            PdfModuleError::FileTooLarge("test".into()).status_code(),
+            413
+        );
         assert_eq!(PdfModuleError::Extraction("test".into()).status_code(), 500);
-        assert_eq!(PdfModuleError::AdapterNotFound("test".into()).status_code(), 400);
-        assert_eq!(PdfModuleError::CorruptedFile("test".into()).status_code(), 422);
+        assert_eq!(
+            PdfModuleError::AdapterNotFound("test".into()).status_code(),
+            400
+        );
+        assert_eq!(
+            PdfModuleError::CorruptedFile("test".into()).status_code(),
+            422
+        );
     }
 
     #[test]
@@ -147,6 +202,9 @@ mod tests {
         let json = err.to_dict();
         assert_eq!(json["error"], "FileNotFoundError");
         assert_eq!(json["status_code"], 404);
-        assert!(json["message"].as_str().unwrap().contains("/path/to/file.pdf"));
+        assert!(json["message"]
+            .as_str()
+            .unwrap()
+            .contains("/path/to/file.pdf"));
     }
 }

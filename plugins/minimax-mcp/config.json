@@ -1,0 +1,84 @@
+{
+  "name": "minimax-mcp",
+  "version": "1.0.0",
+  "description": "MiniMax MCP Plugin for PDF Module",
+  "author": "PDF Module Team",
+  "license": "MIT",
+  "main": "index.js",
+  "tools": [
+    {
+      "name": "web_search",
+      "description": "网络搜索工具,根据查询词返回搜索结果",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "搜索查询词"
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "understand_image",
+      "description": "图片理解工具,对图片进行理解和分析",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "对图片的提问或分析要求"
+          },
+          "image_url": {
+            "type": "string",
+            "description": "图片来源URL或本地路径"
+          }
+        },
+        "required": ["prompt", "image_url"]
+      }
+    }
+  ],
+  "config": {
+    "api_key": {
+      "type": "string",
+      "required": true,
+      "description": "MiniMax API密钥",
+      "env": "MINIMAX_API_KEY"
+    },
+    "base_url": {
+      "type": "string",
+      "default": "https://api.minimax.chat",
+      "description": "API基础URL",
+      "env": "MINIMAX_BASE_URL"
+    },
+    "web_search_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "启用网络搜索",
+      "env": "MINIMAX_WEB_SEARCH_ENABLED"
+    },
+    "image_understand_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "启用图片理解",
+      "env": "MINIMAX_IMAGE_UNDERSTAND_ENABLED"
+    },
+    "timeout": {
+      "type": "number",
+      "default": 30,
+      "description": "请求超时(秒)",
+      "env": "MINIMAX_TIMEOUT"
+    },
+    "max_image_size": {
+      "type": "number",
+      "default": 20,
+      "description": "最大图片大小(MB)",
+      "env": "MINIMAX_MAX_IMAGE_SIZE"
+    }
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "form-data": "^4.0.0"
+  }
+}
