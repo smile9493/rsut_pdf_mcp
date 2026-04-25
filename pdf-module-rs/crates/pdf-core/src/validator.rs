@@ -7,26 +7,8 @@ use std::path::Path;
 
 const ALLOWED_EXTENSIONS: &[&str] = &[".pdf"];
 
-/// Path validation configuration
-#[derive(Debug, Clone)]
-pub struct PathValidationConfig {
-    /// Whether to require absolute paths
-    pub require_absolute: bool,
-    /// Whether to allow path traversal (..)
-    pub allow_traversal: bool,
-    /// Optional base directory for relative paths
-    pub base_dir: Option<std::path::PathBuf>,
-}
-
-impl Default for PathValidationConfig {
-    fn default() -> Self {
-        Self {
-            require_absolute: true,
-            allow_traversal: false,
-            base_dir: None,
-        }
-    }
-}
+// Re-export PathValidationConfig from pdf-common (unified source of truth).
+pub use pdf_common::config::PathValidationConfig;
 
 /// File validator with four-level validation chain
 /// Corresponds to Python: FileValidator

@@ -177,6 +177,56 @@ impl From<jsonschema::ValidationError<'_>> for EtlError {
 /// ETL Result 类型别名
 pub type Result<T> = std::result::Result<T, EtlError>;
 
+impl EtlError {
+    /// Convert this ETL error into the unified `pdf_common::PdfError`.
+    ///
+    /// Enables gradual migration: existing ETL code continues to use
+    /// `EtlError` while interfaces that require `PdfError` can accept it
+    /// via this conversion.
+    pub fn into_unified(self) -> pdf_common::PdfError {
+        match self {
+            Self::ExtractionError(s) => pdf_common::PdfError::Extraction(s),
+            Self::SchemaError(s) => pdf_common::PdfError::SchemaValidation(s),
+            Self::LLMError(s) => pdf_common::PdfError::LLM(s),
+            Self::DatabaseError(s) => pdf_common::PdfError::Database(s),
+            Self::ValidationError(msg, _details) => pdf_common::PdfError::Validation(msg),
+            Self::ConfigError(s) => pdf_common::PdfError::Config(s),
+            Self::TimeoutError(s) => pdf_common::PdfError::Http(s),
+            Self::IoError(e) => pdf_common::PdfError::Io(e),
+            Self::JsonError(e) => pdf_common::PdfError::Json(e),
+            Self::HttpError(s) => pdf_common::PdfError::Http(s),
+            Self::FileNotFoundError(s) => pdf_common::PdfError::FileNotFound(s),
+            Self::CorruptedPdfError(s) => pdf_common::PdfError::CorruptedFile(s),
+            Self::ParameterMissingError(s) => pdf_common::PdfError::ParameterMissing(s),
+            Self::ParameterTypeError(s) => pdf_common::PdfError::ParameterType(s),
+        }
+    }
+}
+
+/// Implement conversion from `pdf_common::PdfError` to `EtlError`.
+impl From<pdf_common::PdfError> for EtlError {
+    fn from(err: pdf_common::PdfError) -> Self {
+        match err {
+            pdf_common::PdfError::Extraction(s) => Self::ExtractionError(s),
+            pdf_common::PdfError::SchemaValidation(s) => Self::SchemaError(s),
+            pdf_common::PdfError::LLM(s) => Self::LLMError(s),
+            pdf_common::PdfError::Database(s) => Self::DatabaseError(s),
+            pdf_common::PdfError::Validation(s) => Self::ValidationError(s, vec![]),
+            pdf_common::PdfError::Config(s) => Self::ConfigError(s),
+            pdf_common::PdfError::Http(s) => Self::HttpError(s),
+            pdf_common::PdfError::Io(e) => Self::IoError(e),
+            pdf_common::PdfError::Json(e) => Self::JsonError(e),
+            pdf_common::PdfError::FileNotFound(s) => Self::FileNotFoundError(s),
+            pdf_common::PdfError::CorruptedFile(s) => Self::CorruptedPdfError(s),
+            pdf_common::PdfError::ParameterMissing(s) => Self::ParameterMissingError(s),
+            pdf_common::PdfError::ParameterType(s) => Self::ParameterTypeError(s),
+            pdf_common::PdfError::Timeout(_) => Self::TimeoutError(err.to_string()),
+            // Map remaining variants to the closest ETL equivalent
+            other => Self::ExtractionError(other.to_string()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

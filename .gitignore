@@ -1,13 +1,15 @@
-# ==================== Rust ====================
-target/
-**/*.rs.bk
-*.pdb
-Cargo.lock
+# ==================== Git Repository Info ====================
+# This is the root .gitignore for a multi-project monorepo
+# Contains: pdf-module-rs (Rust), pdf-web-ui (Web), unstract (Reference)
 
-# Compiled binaries
-pdf-mcp
-pdf-rest
-*.exe
+# ==================== Rust - Build Artifacts ====================
+# Note: target/ is ignored in pdf-module-rs/.gitignore
+**/*.rs.bk           # Rust backup files
+*.pdb                # Debug symbols
+
+# Root-level compiled binaries (use leading / to avoid matching subdirectories)
+/pdf-mcp
+/pdf-rest
 
 # ==================== Python ====================
 __pycache__/
@@ -44,13 +46,18 @@ dmypy.json
 .pytype/
 .pylintrc
 
-# ==================== Environment ====================
+# ==================== Environment & Secrets ====================
 .env
 .env.local
 .env.*.local
 *.env
+*.pem
+*.key
+*.crt
+secrets/
+.secrets/
 
-# ==================== IDE ====================
+# ==================== IDE & Editors ====================
 .idea/
 .vscode/
 *.swp
@@ -62,7 +69,7 @@ dmypy.json
 *.sublime-workspace
 *.sublime-project
 
-# ==================== OS ====================
+# ==================== Operating System ====================
 .DS_Store
 .DS_Store?
 ._*
@@ -88,13 +95,19 @@ cache/
 .docker/
 
 # ==================== Build Artifacts ====================
+# PDF files (except documentation and test fixtures)
 *.pdf
 *.PDF
-!docs/*.pdf
+!docs/**/*.pdf
+!**/tests/fixtures/**/*.pdf
+!**/test_data/**/*.pdf
+
+# Archives (except release artifacts)
 *.zip
 *.tar.gz
 *.tgz
 *.rar
+!.github/releases/**
 
 # ==================== Temporary Files ====================
 tmp/
@@ -104,19 +117,12 @@ temp/
 *.bak
 *.backup
 
-# ==================== Secrets ====================
-*.pem
-*.key
-*.crt
-secrets/
-.secrets/
-
 # ==================== Database ====================
 *.db
 *.sqlite
 *.sqlite3
 
-# ==================== Jupyter ====================
+# ==================== Jupyter Notebooks ====================
 .ipynb_checkpoints/
 
 # ==================== Node.js ====================
@@ -124,9 +130,10 @@ node_modules/
 package-lock.json
 yarn.lock
 
-# ==================== Misc ====================
+# ==================== Tool-specific ====================
 .arts/
 .codeartsdoer/
 
 # ==================== Reference Projects ====================
+# unstract is a reference project, not part of our codebase
 unstract/

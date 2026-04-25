@@ -43,6 +43,7 @@ regex = { workspace = true }
 
 # Internal crates
 pdf-core = { path = "../pdf-core" }
+pdf-common = { workspace = true }
 
 [dev-dependencies]
 mockito = "1.4"
