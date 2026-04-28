@@ -1,31 +1,18 @@
 [package]
 name = "pdf-common"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
-description = "Common types, errors, and utilities shared across pdf-module crates"
+description = "Minimal shared types and errors for pdf-module"
 
 [dependencies]
-# Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
-
-# Async
-async-trait = { workspace = true }
-
-# Error handling
 thiserror = { workspace = true }
-
-# Time
+async-trait = { workspace = true }
 chrono = { workspace = true }
-
-# Async runtime (for atomics in circuit breaker)
-tokio = { workspace = true }
-
-# Configuration parsing
 toml = { workspace = true }
-
-# Proc macros
+tracing = { workspace = true }
 pdf-macros = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }

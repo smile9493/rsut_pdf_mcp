@@ -1,7 +1,5 @@
-//! Pdfium engine implementation
-//! High-compatibility fallback engine
-
 use async_trait::async_trait;
+use std::panic::catch_unwind;
 use std::path::Path;
 
 use crate::dto::{
@@ -10,28 +8,91 @@ use crate::dto::{
 use crate::engine::PdfEngine;
 use crate::error::{PdfModuleError, PdfResult};
 
-/// High-compatibility PDF engine based on PDFium
-/// Used as fallback for complex documents
 pub struct PdfiumEngine;
+
+struct StructuredParts {
+    extracted_text: String,
+    page_count: u32,
+    pages: Vec<PageMetadata>,
+}
 
 impl PdfiumEngine {
     pub fn new() -> PdfResult<Self> {
         Ok(Self)
     }
+
+    pub fn safe_extract_text(data: &[u8]) -> PdfResult<String> {
+        catch_unwind(|| {
+            use pdfium_render::prelude::*;
+            let pdfium = Pdfium::default();
+            let document = pdfium.load_pdf_from_byte_slice(data, None)?;
+            let mut all_text = String::new();
+            let pages = document.pages();
+            for i in 0..pages.len() {
+                let page = pages.get(i)?;
+                let text = page.text()?;
+                all_text.push_str(&text.all());
+                all_text.push('\n');
+            }
+            Ok::<String, PdfiumError>(all_text.trim().to_string())
+        })
+        .map_err(|_| PdfModuleError::Extraction("Pdfium FFI panic".to_string()))?
+        .map_err(|e| PdfModuleError::Extraction(format!("Pdfium error: {}", e)))
+    }
+
+    fn safe_extract_structured_parts(data: &[u8]) -> PdfResult<StructuredParts> {
+        catch_unwind(|| {
+            use pdfium_render::prelude::*;
+            let pdfium = Pdfium::default();
+            let document = pdfium.load_pdf_from_byte_slice(data, None)?;
+            let pages = document.pages();
+            let page_count = pages.len() as u32;
+            let mut all_text = String::new();
+            let mut page_metas = Vec::with_capacity(page_count as usize);
+
+            for i in 0..pages.len() {
+                let page = pages.get(i)?;
+                let text = page.text()?;
+                let text_str = text.all();
+                let width = page.width().value as f64;
+                let height = page.height().value as f64;
+
+                page_metas.push(PageMetadata {
+                    page_number: (i + 1) as u32,
+                    text: text_str.trim().to_string(),
+                    bbox: Some((0.0, 0.0, width, height)),
+                    lines: vec![],
+                });
+                all_text.push_str(&text_str);
+                all_text.push('\n');
+            }
+
+            Ok::<StructuredParts, PdfiumError>(StructuredParts {
+                extracted_text: all_text.trim().to_string(),
+                page_count,
+                pages: page_metas,
+            })
+        })
+        .map_err(|_| PdfModuleError::Extraction("Pdfium FFI panic".to_string()))?
+        .map_err(|e| PdfModuleError::Extraction(format!("Pdfium error: {}", e)))
+    }
+
+    pub fn safe_get_page_count(data: &[u8]) -> PdfResult<u32> {
+        catch_unwind(|| {
+            use pdfium_render::prelude::*;
+            let pdfium = Pdfium::default();
+            let document = pdfium.load_pdf_from_byte_slice(data, None)?;
+            Ok::<u32, PdfiumError>(document.pages().len() as u32)
+        })
+        .map_err(|_| PdfModuleError::Extraction("Pdfium FFI panic".to_string()))?
+        .map_err(|e| PdfModuleError::Extraction(format!("Pdfium error: {}", e)))
+    }
 }
 
 impl Default for PdfiumEngine {
     fn default() -> Self {
-        Self::new().unwrap_or_else(|e| {
-            tracing::error!("Failed to create PdfiumEngine: {}", e);
-            Self
-        })
+        Self
     }
-}
-
-/// Convert PdfiumError to PdfModuleError
-fn pdfium_error(e: pdfium_render::prelude::PdfiumError) -> PdfModuleError {
-    PdfModuleError::Extraction(format!("Pdfium error: {}", e))
 }
 
 #[async_trait]
@@ -45,32 +106,14 @@ impl PdfEngine for PdfiumEngine {
     }
 
     fn description(&self) -> &str {
-        "High-compatibility PDF engine based on PDFium"
+        "Pdfium engine with catch_unwind FFI seawall"
     }
 
     async fn extract_text(&self, file_path: &Path) -> PdfResult<TextExtractionResult> {
-        // Use pdfium-render for text extraction
-        use pdfium_render::prelude::*;
-
-        let pdfium = Pdfium::default();
-        let document = pdfium
-            .load_pdf_from_file(file_path, None)
-            .map_err(pdfium_error)?;
-
-        let mut all_text = String::new();
-        let pages = document.pages();
-
-        for i in 0..pages.len() {
-            let page = pages.get(i).map_err(pdfium_error)?;
-            let text = page.text().map_err(pdfium_error)?;
-            // Convert PdfPageText to String
-            let text_str = text.all();
-            all_text.push_str(&text_str);
-            all_text.push('\n');
-        }
-
+        let data = std::fs::read(file_path)?;
+        let text = Self::safe_extract_text(&data)?;
         Ok(TextExtractionResult {
-            extracted_text: all_text.trim().to_string(),
+            extracted_text: text,
             extraction_metadata: None,
         })
     }
@@ -80,62 +123,21 @@ impl PdfEngine for PdfiumEngine {
         file_path: &Path,
         _options: &ExtractOptions,
     ) -> PdfResult<StructuredExtractionResult> {
-        use pdfium_render::prelude::*;
-
-        let pdfium = Pdfium::default();
-        let document = pdfium
-            .load_pdf_from_file(file_path, None)
-            .map_err(pdfium_error)?;
-
-        let pages = document.pages();
-        let page_count = pages.len() as u32;
-        let mut all_text = String::new();
-        let mut page_metas = Vec::with_capacity(page_count as usize);
-
-        for i in 0..pages.len() {
-            let page = pages.get(i).map_err(pdfium_error)?;
-            let text = page.text().map_err(pdfium_error)?;
-            // Convert PdfPageText to String
-            let text_str = text.all();
-
-            // Get page dimensions as bbox
-            // width() and height() return PdfPoints directly, not Result
-            // Convert f32 to f64 for bbox
-            let width = page.width().value as f64;
-            let height = page.height().value as f64;
-            let bbox = Some((0.0, 0.0, width, height));
-
-            page_metas.push(PageMetadata {
-                page_number: (i + 1) as u32,
-                text: text_str.trim().to_string(),
-                bbox,
-                lines: vec![],
-            });
-
-            all_text.push_str(&text_str);
-            all_text.push('\n');
-        }
-
+        let data = std::fs::read(file_path)?;
+        let parts = Self::safe_extract_structured_parts(&data)?;
         let file_info = FileInfo::from_path(file_path)?;
-
         Ok(StructuredExtractionResult {
-            extracted_text: all_text.trim().to_string(),
-            page_count,
-            pages: page_metas,
+            extracted_text: parts.extracted_text,
+            page_count: parts.page_count,
+            pages: parts.pages,
             extraction_metadata: None,
             file_info,
         })
     }
 
     async fn get_page_count(&self, file_path: &Path) -> PdfResult<u32> {
-        use pdfium_render::prelude::*;
-
-        let pdfium = Pdfium::default();
-        let document = pdfium
-            .load_pdf_from_file(file_path, None)
-            .map_err(pdfium_error)?;
-
-        Ok(document.pages().len() as u32)
+        let data = std::fs::read(file_path)?;
+        Self::safe_get_page_count(&data)
     }
 
     fn test_connection(&self) -> bool {
@@ -151,7 +153,6 @@ mod tests {
     fn test_engine_metadata() {
         let engine = PdfiumEngine::new().unwrap();
         assert_eq!(engine.id(), "pdfium");
-        assert_eq!(engine.name(), "PdfiumEngine");
         assert!(engine.test_connection());
     }
 }

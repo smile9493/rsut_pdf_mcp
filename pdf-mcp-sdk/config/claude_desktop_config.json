@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "pdf-module": {
-      "command": "docker",
-      "args": ["exec", "-i", "pdf-mcp-server", "pdf-mcp", "serve", "--transport", "stdio"],
-      "env": {}
-    }
-  }
-}
