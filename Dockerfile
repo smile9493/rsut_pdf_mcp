@@ -35,10 +35,9 @@ WORKDIR /app
 
 # 从构建阶段复制二进制文件
 COPY --from=builder /app/target/release/pdf-mcp /usr/local/bin/pdf-mcp
-COPY --from=builder /app/target/release/pdf-rest /usr/local/bin/pdf-rest
 
 # 设置权限
-RUN chmod +x /usr/local/bin/pdf-mcp /usr/local/bin/pdf-rest
+RUN chmod +x /usr/local/bin/pdf-mcp
 
 # 创建必要目录
 RUN mkdir -p /app/data /app/logs/audit /app/cache && \
@@ -57,12 +56,8 @@ ENV AUDIT_ENABLED=true
 ENV AUDIT_LOG_DIR=/app/logs/audit
 ENV MAX_FILE_SIZE_MB=100
 
-# 暴露端口
-EXPOSE 8000 8001
+# 暴露端口 (MCP SSE)
+EXPOSE 8001
 
-# 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/api/v1/x2text/health || exit 1
-
-# 默认启动 REST API 服务
-CMD ["pdf-rest"]
+# 默认启动 MCP 服务 (stdio)
+CMD ["pdf-mcp"]

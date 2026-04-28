@@ -43,11 +43,18 @@ export default {
     auditLogs: '审计日志',
     settings: '系统设置',
     plugins: '插件管理',
+    outbox: 'Outbox 监控',
+    observability: '可观测性',
+    reconciliation: '对账监控',
+    pipeline: '提取流水线',
+    rbac: '权限管理',
+    vectorRoutes: '向量路由',
     sections: {
       main: '主要',
       operations: '操作',
       tools: '工具',
       monitoring: '监控',
+      advanced: '高级',
       settings: '设置'
     }
   },

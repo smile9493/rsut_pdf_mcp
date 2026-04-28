@@ -2,54 +2,121 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 主题变量定义 */
+/* ═══════════════════════════════════════════════════════════════
+   Design Tokens — V3.1 Calibrated (F1.5)
+   8px grid · Monospace-first · Dark-mode priority
+   ═══════════════════════════════════════════════════════════════ */
+
 :root {
-  /* Light Theme (default) */
-  --color-primary: #0d9488;
-  --color-primary-light: #14b8a6;
-  --color-primary-dark: #0f766e;
-  
-  --color-bg: #f8fafc;
-  --color-surface: #ffffff;
-  --color-surface-hover: #f1f5f9;
-  --color-border: #e2e8f0;
-  
-  --color-text-primary: #0f172a;
+  /* ── Primary (Deep Teal) ── */
+  --color-primary-50:  #f0fdfa;
+  --color-primary-100: #ccfbf1;
+  --color-primary-200: #99f6e4;
+  --color-primary-300: #5eead4;
+  --color-primary-400: #2dd4bf;
+  --color-primary-500: #14b8a6;  /* 主色 */
+  --color-primary-600: #0d9488;  /* 品牌色 Deep Teal */
+  --color-primary-700: #0f766e;
+  --color-primary-800: #115e59;
+  --color-primary-900: #134e4a;
+
+  /* ── Surface ── */
+  --color-surface-0:   #ffffff;  /* 基底 */
+  --color-surface-50:  #f8fafc;
+  --color-surface-100: #f1f5f9;
+  --color-surface-200: #e2e8f0;
+  --color-surface-300: #cbd5e1;
+
+  /* ── Text ── */
+  --color-text-primary:   #0f172a;
   --color-text-secondary: #475569;
-  --color-text-muted: #94a3b8;
-  
-  --color-success: #22c55e;
-  --color-error: #ef4444;
-  --color-warning: #f59e0b;
-  --color-info: #3b82f6;
-  
-  --color-accent-pink: #ec4899;
-  --color-accent-orange: #f97316;
-  --color-accent-purple: #a855f7;
+  --color-text-tertiary:  #94a3b8;
+  --color-text-inverse:   #ffffff;
+
+  /* ── Semantic (Status) ── */
+  --color-success:  #10b981;
+  --color-warning:  #f59e0b;
+  --color-error:    #ef4444;
+  --color-info:     #3b82f6;
+
+  /* ── Metric ── */
+  --color-metric-positive:  #10b981;
+  --color-metric-negative:  #ef4444;
+  --color-metric-neutral:   #6b7280;
+  --color-metric-threshold: #f59e0b;
+
+  /* ── Font Family ── */
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+
+  /* ── Font Size (8px 基数) ── */
+  --text-micro:   0.625rem;  /* 10px — 辅助标注 */
+  --text-xs:      0.75rem;   /* 12px — 次要信息 */
+  --text-sm:      0.875rem;  /* 14px — 正文 */
+  --text-base:    1rem;      /* 16px — 主正文 */
+  --text-lg:      1.125rem;  /* 18px — 小标题 */
+  --text-xl:      1.25rem;   /* 20px — 标题 */
+  --text-2xl:     1.5rem;    /* 24px — 大标题 */
+  --text-display: 2rem;      /* 32px — 展示 */
+
+  /* ── Monospace 优先策略 ── */
+  /* 所有数值、指标、ID、时间戳、状态码 必须使用 font-mono */
+  --font-data: var(--font-mono);    /* 数据展示 */
+  --font-code: var(--font-mono);    /* 代码/ID */
+  --font-ui:   var(--font-sans);    /* UI 文案 */
+
+  /* ── 8px 栅格间距 ── */
+  --space-0:   0;
+  --space-1:   0.25rem;  /*  4px — 微间距 */
+  --space-2:   0.5rem;   /*  8px — 基础单位 */
+  --space-3:   0.75rem;  /* 12px */
+  --space-4:   1rem;     /* 16px */
+  --space-5:   1.25rem;  /* 20px */
+  --space-6:   1.5rem;   /* 24px */
+  --space-8:   2rem;     /* 32px */
+  --space-10:  2.5rem;   /* 40px */
+  --space-12:  3rem;     /* 48px */
+  --space-16:  4rem;     /* 64px */
+
+  /* ── 组件内间距 ── */
+  --padding-input:     var(--space-2) var(--space-3);  /* 8px 12px */
+  --padding-card:      var(--space-4);                 /* 16px */
+  --padding-section:   var(--space-6);                 /* 24px */
+  --padding-page:      var(--space-8);                 /* 32px */
+
+  /* ── 圆角 ── */
+  --radius-sm:  0.25rem;  /*  4px */
+  --radius-md:  0.5rem;   /*  8px */
+  --radius-lg:  0.75rem;  /* 12px */
+  --radius-xl:  1rem;     /* 16px */
 }
 
-/* Dark Theme */
+/* Dark Theme (default priority) */
 .dark {
-  --color-bg: #0f172a;
-  --color-surface: #1e293b;
-  --color-surface-hover: #334155;
-  --color-border: #475569;
-  
-  --color-text-primary: #f1f5f9;
+  --color-surface-0:   #0f172a;
+  --color-surface-50:  #1e293b;
+  --color-surface-100: #334155;
+  --color-surface-200: #475569;
+  --color-surface-300: #64748b;
+
+  --color-text-primary:   #f1f5f9;
   --color-text-secondary: #94a3b8;
-  --color-text-muted: #64748b;
+  --color-text-tertiary:  #64748b;
+  --color-text-inverse:   #0f172a;
 }
 
 /* Light Theme (explicit) */
 .light {
-  --color-bg: #f8fafc;
-  --color-surface: #ffffff;
-  --color-surface-hover: #f1f5f9;
-  --color-border: #e2e8f0;
-  
-  --color-text-primary: #0f172a;
+  --color-surface-0:   #ffffff;
+  --color-surface-50:  #f8fafc;
+  --color-surface-100: #f1f5f9;
+  --color-surface-200: #e2e8f0;
+  --color-surface-300: #cbd5e1;
+
+  --color-text-primary:   #0f172a;
   --color-text-secondary: #475569;
-  --color-text-muted: #94a3b8;
+  --color-text-tertiary:  #94a3b8;
+  --color-text-inverse:   #ffffff;
 }
 
 @layer base {
