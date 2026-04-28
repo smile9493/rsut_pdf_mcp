@@ -277,6 +277,35 @@ pdf-module-rs/
 ├── docker-compose.yml      # Docker Compose
 ├── .env.example            # 环境变量示例
 └── crates/
+    ├── pdf-common/          # 公共库 (V3.1 规范化编程)
+    │   ├── src/
+    │   │   ├── vector.rs           # 向量存储 Trait
+    │   │   ├── lancedb_storage.rs  # LanceDB 实现
+    │   │   ├── logic_storage.rs    # 逻辑存储 Trait
+    │   │   ├── outbox.rs           # Outbox 模式
+    │   │   ├── storage.rs          # 通用存储 Trait
+    │   │   ├── blocking.rs         # CPU 任务隔离
+    │   │   ├── compensation.rs     # 透明补偿
+    │   │   ├── backpressure.rs     # 自适应背压
+    │   │   ├── reconciliation.rs   # 对账 Worker
+    │   │   ├── dual_store.rs       # 双库锚定写入
+    │   │   ├── rbac.rs             # RBAC 权限
+    │   │   ├── score_calibrator.rs # 分数校准
+    │   │   ├── progressive_router.rs # 渐进式路由
+    │   │   ├── hybrid_search.rs    # 混合检索流
+    │   │   ├── ast_chunker.rs      # AST 分块
+    │   │   ├── confidence_interceptor.rs # 置信度拦截
+    │   │   ├── graph_storage.rs    # 图关系存储
+    │   │   ├── prompt_hint.rs      # Prompt Hint
+    │   │   ├── metrics.rs          # 指标记录
+    │   │   ├── vector_gc.rs        # 向量 GC
+    │   │   ├── config.rs           # 配置
+    │   │   ├── error.rs            # 错误处理
+    │   │   ├── dto.rs              # 数据模型
+    │   │   └── traits.rs           # 公共 Trait
+    │   ├── tests/
+    │   │   └── integration_tests.rs # 17 个集成测试
+    │   └── Cargo.toml
     ├── pdf-core/           # 核心库
     │   ├── src/
     │   │   ├── engine/     # PDF 引擎实现
@@ -345,9 +374,23 @@ pdf-module-rs/
         └── Cargo.toml
 ```
 
+## V3.1 规范化编程
+
+项目已完成 V3.1 "终局生产版" 规范化编程改造，详细规划参见 [V3.1 开发任务规划书](../docs/V3.1_DEVELOPMENT_PLAN.md)。
+
+V3.1 在 `pdf-common` crate 中新增 20 个模块，覆盖向量存储、双库锚定、RBAC、混合检索、AST 分块、图存储等核心能力。详见根目录 README 的 [V3.1 规范化编程](../README.md#v31-规范化编程) 章节。
+
+---
+
 ## 测试
 
 ```bash
+# pdf-common 全部测试 (含 17 个集成测试)
+cargo test -p pdf-common
+
+# Clippy 检查
+cargo clippy -p pdf-common --all-targets
+
 # 端到端测试 (使用真实 PDF)
 cargo test --package pdf-core --test e2e_test -- --nocapture
 

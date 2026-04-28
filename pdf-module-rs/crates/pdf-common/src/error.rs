@@ -287,7 +287,7 @@ pub type Result<T> = std::result::Result<T, PdfError>;
 /// when crossing crate boundaries that expect `PdfError`.
 impl From<PdfError> for std::io::Error {
     fn from(err: PdfError) -> Self {
-        std::io::Error::new(std::io::ErrorKind::Other, err.to_string())
+        std::io::Error::other(err.to_string())
     }
 }
 

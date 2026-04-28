@@ -6,18 +6,13 @@ use crate::PdfError;
 use serde::{Deserialize, Serialize};
 
 /// Application environment
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Environment {
+    #[default]
     Development,
     Staging,
     Production,
-}
-
-impl Default for Environment {
-    fn default() -> Self {
-        Self::Development
-    }
 }
 
 /// Cache configuration
@@ -111,17 +106,12 @@ impl AuditConfig {
 }
 
 /// Log format
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LogFormat {
+    #[default]
     Json,
     Text,
-}
-
-impl Default for LogFormat {
-    fn default() -> Self {
-        Self::Json
-    }
 }
 
 /// Logging configuration
@@ -186,19 +176,14 @@ impl Default for SecurityConfig {
 }
 
 /// Storage backend type
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum StorageType {
+    #[default]
     Local,
     S3,
     Gcs,
     AzureBlob,
-}
-
-impl Default for StorageType {
-    fn default() -> Self {
-        Self::Local
-    }
 }
 
 /// Local storage configuration
