@@ -207,7 +207,7 @@ jobs:
     name: Docker MCP (${{ matrix.platform }})
     needs: build-mcp
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DOCKER_ENABLED == 'true'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && secrets.DOCKER_ENABLED == 'true'
     strategy:
       matrix:
         include:
@@ -254,8 +254,8 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -271,7 +271,7 @@ jobs:
     name: Docker Web (${{ matrix.platform }})
     needs: web-build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DOCKER_ENABLED == 'true'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && secrets.DOCKER_ENABLED == 'true'
     strategy:
       matrix:
         include:
@@ -315,8 +315,8 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
