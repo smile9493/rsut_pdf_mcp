@@ -116,7 +116,7 @@ impl VlmGateway {
         tokio::select! {
             _ = shutdown_rx.recv() => {
                 warn!(trace_id = %trace_id, "VLM request cancelled: shutdown signal");
-                return Err(VlmError::Unavailable("shutdown".into()));
+                Err(VlmError::Unavailable("shutdown".into()))
             }
             result = self.dispatch_request(&payload, &trace_id) => {
                 result
