@@ -207,7 +207,7 @@ jobs:
     name: Docker MCP (${{ matrix.platform }})
     needs: build-mcp
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DOCKER_ENABLED == 'true'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DOCKER_ENABLED != ''
     strategy:
       matrix:
         include:
@@ -271,7 +271,7 @@ jobs:
     name: Docker Web (${{ matrix.platform }})
     needs: web-build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DOCKER_ENABLED == 'true'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DOCKER_ENABLED != ''
     strategy:
       matrix:
         include:
