@@ -296,12 +296,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: web-dist
-          path: ./web
+          path: .
 
       - name: Extract Web dist
         run: |
-          cd web
-          tar -xzf *.tar.gz
+          tar -xzf web-dist.tar.gz
+          ls -la dist/
 
       - name: Docker meta
         id: meta
