@@ -217,7 +217,7 @@ jobs:
     name: Docker MCP (${{ matrix.platform }})
     needs: build-mcp
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: false # Disabled: Docker images are built and pushed manually
     strategy:
       matrix:
         include:
@@ -281,7 +281,7 @@ jobs:
     name: Docker Web (${{ matrix.platform }})
     needs: web-build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: false # Disabled: Docker images are built and pushed manually
     strategy:
       matrix:
         include:
