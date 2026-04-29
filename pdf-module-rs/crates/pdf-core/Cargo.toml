@@ -3,6 +3,7 @@ name = "pdf-core"
 version = "0.3.0"
 edition = "2021"
 description = "Pure PDF extraction pipe: pdfium engine, zero state, zero cache"
+license = "MIT"
 
 [dependencies]
 serde = { workspace = true }
@@ -21,8 +22,8 @@ serde_yaml = { workspace = true }
 infer = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
-vlm-visual-gateway = { path = "../vlm-visual-gateway" }
-prometheus = { version = "0.13" }
+vlm-visual-gateway = { workspace = true }
+prometheus = { workspace = true }
 memmap2 = { workspace = true }
 bumpalo = { workspace = true }
 sha2 = { workspace = true }

@@ -3,14 +3,15 @@ name = "pdf-dashboard"
 version = "0.3.0"
 edition = "2021"
 description = "Dashboard HTTP API for pdf-module monitoring"
+license = "MIT"
 
 [[bin]]
 name = "pdf-dashboard"
 path = "src/main.rs"
 
 [dependencies]
-pdf-core = { path = "../pdf-core" }
-vlm-visual-gateway = { path = "../vlm-visual-gateway" }
+pdf-core = { workspace = true }
+vlm-visual-gateway = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

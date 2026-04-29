@@ -3,6 +3,7 @@ name = "pdf-common"
 version = "0.3.0"
 edition = "2021"
 description = "Minimal shared types and errors for pdf-module"
+license = "MIT"
 
 [dependencies]
 serde = { workspace = true }

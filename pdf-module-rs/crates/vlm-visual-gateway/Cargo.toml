@@ -3,6 +3,7 @@ name = "vlm-visual-gateway"
 version = "0.1.0"
 edition = "2021"
 description = "VLM visual gateway: conditional escalation from Pdfium local parsing to remote VLM layout understanding"
+license = "MIT"
 
 [dependencies]
 serde = { workspace = true }
@@ -19,7 +20,7 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-feature
 # Base64 encoding
 base64 = "0.22"
 # Prometheus metrics
-prometheus = { version = "0.13", features = ["process"] }
+prometheus = { workspace = true, features = ["process"] }
 # UUID for trace_id generation
 uuid = { version = "1", features = ["v4"] }
 # Regex for parsing VLM text responses

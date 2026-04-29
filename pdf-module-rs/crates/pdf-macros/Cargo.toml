@@ -3,6 +3,7 @@ name = "pdf-macros"
 version = "0.1.0"
 edition = "2021"
 description = "Proc macros for the PDF module workspace"
+license = "MIT"
 
 [lib]
 proc-macro = true
