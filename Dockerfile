@@ -1,5 +1,5 @@
 # Development Dockerfile - 从源码构建
-FROM rust:latest-bookworm as builder
+FROM rust:bookworm as builder
 
 WORKDIR /app
 
