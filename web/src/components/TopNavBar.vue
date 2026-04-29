@@ -3,7 +3,10 @@
     <!-- Left Section: Breadcrumb -->
     <div class="flex items-center gap-md">
       <div class="flex items-center gap-xs text-sm text-text-muted">
-        <component :is="currentRouteIcon" class="w-4 h-4" />
+        <component
+          :is="currentRouteIcon"
+          class="w-4 h-4"
+        />
         <span>{{ t(currentRouteLabel) }}</span>
       </div>
     </div>
@@ -16,7 +19,7 @@
           type="text"
           :placeholder="t('common.search')"
           class="w-full pl-lg pr-md py-sm bg-surface border border-border rounded text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-1 transition-all"
-        />
+        >
       </div>
     </div>
 
@@ -85,7 +88,7 @@
             <DocumentTextIcon class="w-4 h-4" />
             {{ t('common.documentation') }}
           </a>
-          <div class="border-t border-border my-xs"></div>
+          <div class="border-t border-border my-xs" />
           <a 
             href="#"
             class="flex items-center gap-sm px-md py-sm text-sm text-error hover:bg-surface-hover transition-colors"
@@ -103,7 +106,9 @@
       class="absolute right-xl top-full mt-xs w-80 bg-surface border border-border rounded-lg shadow-lg z-50"
     >
       <div class="p-md border-b border-border">
-        <h3 class="text-sm font-semibold text-text-primary">{{ t('notifications.title') }}</h3>
+        <h3 class="text-sm font-semibold text-text-primary">
+          {{ t('notifications.title') }}
+        </h3>
       </div>
       <div class="max-h-96 overflow-y-auto">
         <div 
@@ -115,14 +120,21 @@
             <div 
               class="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
               :class="notification.type === 'success' ? 'bg-success' : notification.type === 'error' ? 'bg-error' : 'bg-info'"
-            ></div>
+            />
             <div class="flex-1">
-              <div class="text-sm text-text-primary">{{ notification.title }}</div>
-              <div class="text-micro text-text-muted mt-xs">{{ notification.time }}</div>
+              <div class="text-sm text-text-primary">
+                {{ notification.title }}
+              </div>
+              <div class="text-micro text-text-muted mt-xs">
+                {{ notification.time }}
+              </div>
             </div>
           </div>
         </div>
-        <div v-if="notifications.length === 0" class="p-lg text-center text-sm text-text-muted">
+        <div
+          v-if="notifications.length === 0"
+          class="p-lg text-center text-sm text-text-muted"
+        >
           {{ t('notifications.empty') }}
         </div>
       </div>

@@ -20,11 +20,21 @@ const formatDate = (dateStr: string): string => {
     <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-border">
-          <th class="text-left py-2 px-3 text-text-muted font-medium font-mono text-xs">ID</th>
-          <th class="text-left py-2 px-3 text-text-muted font-medium font-mono text-xs">SEQ ID</th>
-          <th class="text-left py-2 px-3 text-text-muted font-medium text-xs">TABLE</th>
-          <th class="text-left py-2 px-3 text-text-muted font-medium text-xs">STATUS</th>
-          <th class="text-left py-2 px-3 text-text-muted font-medium font-mono text-xs">UPDATED</th>
+          <th class="text-left py-2 px-3 text-text-muted font-medium font-mono text-xs">
+            ID
+          </th>
+          <th class="text-left py-2 px-3 text-text-muted font-medium font-mono text-xs">
+            SEQ ID
+          </th>
+          <th class="text-left py-2 px-3 text-text-muted font-medium text-xs">
+            TABLE
+          </th>
+          <th class="text-left py-2 px-3 text-text-muted font-medium text-xs">
+            STATUS
+          </th>
+          <th class="text-left py-2 px-3 text-text-muted font-medium font-mono text-xs">
+            UPDATED
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -51,7 +61,10 @@ const formatDate = (dateStr: string): string => {
           </td>
         </tr>
         <tr v-if="records.length === 0">
-          <td colspan="5" class="py-8 text-center text-sm text-text-muted">
+          <td
+            colspan="5"
+            class="py-8 text-center text-sm text-text-muted"
+          >
             No records
           </td>
         </tr>

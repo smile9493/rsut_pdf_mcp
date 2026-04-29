@@ -17,6 +17,7 @@ import IconSettings from '@/components/atoms/IconSettings.vue'
 import { setLanguage, getLanguage } from '@/i18n'
 import { setTheme, getTheme } from '@/theme'
 import type { Component } from 'vue'
+import type { SupportedLocale, ThemeValue } from '@/types/generated'
 
 const { t } = useI18n()
 
@@ -69,13 +70,13 @@ const toggleCollapse = () => {
 }
 
 const changeLanguage = (e: Event) => {
-  const lang = (e.target as HTMLSelectElement).value
+  const lang = (e.target as HTMLSelectElement).value as SupportedLocale
   setLanguage(lang)
   currentLanguage.value = lang
 }
 
 const changeTheme = (e: Event) => {
-  const theme = (e.target as HTMLSelectElement).value
+  const theme = (e.target as HTMLSelectElement).value as ThemeValue
   setTheme(theme as 'light' | 'dark' | 'auto')
   currentTheme.value = theme
 }
@@ -104,16 +105,23 @@ onMounted(() => {
         <div class="w-8 h-8 rounded bg-primary flex items-center justify-center flex-shrink-0">
           <IconDocumentText class="w-5 h-5 text-white" />
         </div>
-        <div v-if="!isCollapsed" class="overflow-hidden">
-          <div class="text-sm font-semibold text-text-primary">{{ t('common.appName') }}</div>
-          <div class="text-micro text-text-muted">{{ t('common.version') }}</div>
+        <div
+          v-if="!isCollapsed"
+          class="overflow-hidden"
+        >
+          <div class="text-sm font-semibold text-text-primary">
+            {{ t('common.appName') }}
+          </div>
+          <div class="text-micro text-text-muted">
+            {{ t('common.version') }}
+          </div>
         </div>
       </div>
     </div>
 
     <button
-      @click="toggleCollapse"
       class="absolute top-lg right-0 transform translate-x-1/2 w-6 h-6 bg-surface border border-border rounded-full flex items-center justify-center hover:bg-surface-hover transition-colors z-10"
+      @click="toggleCollapse"
     >
       <IconChevronLeft
         class="w-4 h-4 text-text-muted transition-transform duration-300"
@@ -122,7 +130,11 @@ onMounted(() => {
     </button>
 
     <nav class="flex-1 overflow-y-auto p-md">
-      <div v-for="section in navSections" :key="section.id" class="mb-xl">
+      <div
+        v-for="section in navSections"
+        :key="section.id"
+        class="mb-xl"
+      >
         <div
           v-if="!isCollapsed"
           class="text-micro font-semibold text-text-muted uppercase tracking-wider mb-sm px-sm"
@@ -162,16 +174,23 @@ onMounted(() => {
     </nav>
 
     <div class="border-t border-border">
-      <div v-if="!isCollapsed" class="p-md space-y-md">
+      <div
+        v-if="!isCollapsed"
+        class="p-md space-y-md"
+      >
         <div class="flex items-center justify-between">
           <span class="text-micro text-text-muted">{{ t('common.language') }}</span>
           <select
             :value="currentLanguage"
-            @change="changeLanguage"
             class="text-sm bg-surface border border-border rounded px-sm py-xs text-text-primary cursor-pointer hover:border-primary transition-colors"
+            @change="changeLanguage"
           >
-            <option value="zh">中文</option>
-            <option value="en">English</option>
+            <option value="zh">
+              中文
+            </option>
+            <option value="en">
+              English
+            </option>
           </select>
         </div>
 
@@ -179,24 +198,39 @@ onMounted(() => {
           <span class="text-micro text-text-muted">{{ t('common.theme') }}</span>
           <select
             :value="currentTheme"
-            @change="changeTheme"
             class="text-sm bg-surface border border-border rounded px-sm py-xs text-text-primary cursor-pointer hover:border-primary transition-colors"
+            @change="changeTheme"
           >
-            <option value="light">{{ t('common.light') }}</option>
-            <option value="dark">{{ t('common.dark') }}</option>
-            <option value="auto">{{ t('common.auto') }}</option>
+            <option value="light">
+              {{ t('common.light') }}
+            </option>
+            <option value="dark">
+              {{ t('common.dark') }}
+            </option>
+            <option value="auto">
+              {{ t('common.auto') }}
+            </option>
           </select>
         </div>
       </div>
 
-      <div v-else class="p-md flex justify-center">
+      <div
+        v-else
+        class="p-md flex justify-center"
+      >
         <button
-          @click="toggleTheme"
           class="w-8 h-8 rounded flex items-center justify-center hover:bg-surface-hover transition-colors"
           :title="t('common.toggleTheme')"
+          @click="toggleTheme"
         >
-          <IconSun v-if="currentTheme === 'dark'" class="w-4 h-4 text-text-muted" />
-          <IconMoon v-else class="w-4 h-4 text-text-muted" />
+          <IconSun
+            v-if="currentTheme === 'dark'"
+            class="w-4 h-4 text-text-muted"
+          />
+          <IconMoon
+            v-else
+            class="w-4 h-4 text-text-muted"
+          />
         </button>
       </div>
     </div>

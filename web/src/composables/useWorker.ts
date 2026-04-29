@@ -1,9 +1,9 @@
-import { ref, onUnmounted } from 'vue'
+import { ref, onUnmounted, type Ref } from 'vue'
 
 interface UseWorkerReturn<TRequest, TResponse> {
-  data: ref<TResponse | null>
-  loading: ref<boolean>
-  error: ref<string | null>
+  data: Ref<TResponse | null>
+  loading: Ref<boolean>
+  error: Ref<string | null>
   execute: (payload: TRequest, transferables?: ArrayBuffer[]) => Promise<TResponse>
   terminate: () => void
 }
@@ -11,7 +11,7 @@ interface UseWorkerReturn<TRequest, TResponse> {
 export function useWorker<TRequest, TResponse>(
   workerFactory: () => Worker
 ): UseWorkerReturn<TRequest, TResponse> {
-  const data = ref<TResponse | null>(null) as ref<TResponse | null>
+  const data = ref<TResponse | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
   let worker: Worker | null = null
@@ -65,5 +65,11 @@ export function useWorker<TRequest, TResponse>(
     terminate()
   })
 
-  return { data, loading, error, execute, terminate }
+  return { 
+    data: data as Ref<TResponse | null>, 
+    loading, 
+    error, 
+    execute, 
+    terminate 
+  }
 }

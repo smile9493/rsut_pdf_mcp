@@ -13,7 +13,10 @@ withDefaults(defineProps<Props>(), {
 </script>
 
 <template>
-  <IconBase :size="size" :color="color">
+  <IconBase
+    :size="size"
+    :color="color"
+  >
     <polygon points="5 3 19 12 5 21 5 3" />
   </IconBase>
 </template>

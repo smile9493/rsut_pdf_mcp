@@ -1,7 +1,9 @@
 <template>
   <div class="p-2xl">
     <header class="mb-2xl">
-      <h1 class="text-h1 font-bold">{{ t('search.title') }}</h1>
+      <h1 class="text-h1 font-bold">
+        {{ t('search.title') }}
+      </h1>
     </header>
 
     <div class="grid grid-cols-5 gap-xl">
@@ -14,7 +16,7 @@
             type="text"
             class="input-mono"
             placeholder="/path/to/file.pdf"
-          />
+          >
         </div>
 
         <div>
@@ -23,29 +25,40 @@
             v-model="keywordsInput"
             class="input min-h-[120px] resize-y"
             :placeholder="t('search.oneKeywordPerLine')"
-          ></textarea>
+          />
         </div>
 
         <div class="space-y-sm">
           <label class="flex items-center gap-sm cursor-pointer">
-            <input v-model="caseSensitive" type="checkbox" class="w-4 h-4 text-primary rounded" />
+            <input
+              v-model="caseSensitive"
+              type="checkbox"
+              class="w-4 h-4 text-primary rounded"
+            >
             <span class="text-sm">{{ t('search.caseSensitive') }}</span>
           </label>
           <label class="flex items-center gap-sm cursor-pointer">
-            <input v-model="showContext" type="checkbox" class="w-4 h-4 text-primary rounded" />
+            <input
+              v-model="showContext"
+              type="checkbox"
+              class="w-4 h-4 text-primary rounded"
+            >
             <span class="text-sm">{{ t('search.showContext') }}</span>
           </label>
         </div>
 
         <button
-          @click="copyCommand"
           :disabled="!filePath || !keywordsInput"
           class="btn-primary w-full"
+          @click="copyCommand"
         >
           {{ t('common.copy') }} {{ t('mcp.config.download') }}
         </button>
         
-        <div v-if="filePath && keywordsInput" class="mt-lg">
+        <div
+          v-if="filePath && keywordsInput"
+          class="mt-lg"
+        >
           <label class="block text-sm font-medium text-text-secondary mb-sm">MCP Command</label>
           <pre class="bg-bg rounded-lg p-md font-mono text-sm overflow-x-auto border border-border">{{ mcpCommand }}</pre>
         </div>
@@ -54,7 +67,9 @@
       <!-- Right: Instructions -->
       <div class="col-span-3">
         <div class="bg-surface rounded-lg border border-border p-lg">
-          <h2 class="text-lg font-semibold mb-md">{{ t('search.instructions') }}</h2>
+          <h2 class="text-lg font-semibold mb-md">
+            {{ t('search.instructions') }}
+          </h2>
           <ol class="list-decimal list-inside space-y-sm text-sm text-text-secondary">
             <li>{{ t('search.step1') }}</li>
             <li>{{ t('search.step2') }}</li>

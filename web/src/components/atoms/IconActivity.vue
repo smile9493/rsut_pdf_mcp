@@ -13,7 +13,10 @@ withDefaults(defineProps<Props>(), {
 </script>
 
 <template>
-  <IconBase :size="size" :color="color">
+  <IconBase
+    :size="size"
+    :color="color"
+  >
     <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
   </IconBase>
 </template>

@@ -1,14 +1,20 @@
 <template>
   <div class="p-2xl">
     <header class="mb-2xl">
-      <h1 class="text-h1 font-bold">{{ t('settings.title') }}</h1>
-      <p class="text-text-secondary mt-sm">{{ t('settings.subtitle') }}</p>
+      <h1 class="text-h1 font-bold">
+        {{ t('settings.title') }}
+      </h1>
+      <p class="text-text-secondary mt-sm">
+        {{ t('settings.subtitle') }}
+      </p>
     </header>
 
     <div class="space-y-xl">
       <!-- MCP Server Configuration -->
       <section class="bg-surface rounded-lg p-xl border border-border">
-        <h2 class="text-lg font-semibold mb-lg">{{ t('settings.mcp.title') }}</h2>
+        <h2 class="text-lg font-semibold mb-lg">
+          {{ t('settings.mcp.title') }}
+        </h2>
         
         <div class="grid grid-cols-2 gap-xl">
           <div class="space-y-lg">
@@ -21,8 +27,10 @@
                 type="text"
                 class="input font-mono"
                 placeholder="pdf-mcp"
-              />
-              <p class="text-micro text-text-muted mt-xs">{{ t('settings.mcp.serverPathHint') }}</p>
+              >
+              <p class="text-micro text-text-muted mt-xs">
+                {{ t('settings.mcp.serverPathHint') }}
+              </p>
             </div>
 
             <div>
@@ -36,16 +44,22 @@
                 min="1000"
                 max="300000"
                 step="1000"
-              />
+              >
               <span class="text-sm text-text-muted ml-sm">ms</span>
             </div>
           </div>
 
           <div class="space-y-lg">
-            <h3 class="text-sm font-medium text-text-secondary">{{ t('settings.mcp.tools') }}</h3>
+            <h3 class="text-sm font-medium text-text-secondary">
+              {{ t('settings.mcp.tools') }}
+            </h3>
             <div class="space-y-sm">
-              <div v-for="tool in mcpTools" :key="tool.name" class="flex items-center gap-sm">
-                <div class="w-2 h-2 rounded-full bg-success"></div>
+              <div
+                v-for="tool in mcpTools"
+                :key="tool.name"
+                class="flex items-center gap-sm"
+              >
+                <div class="w-2 h-2 rounded-full bg-success" />
                 <span class="text-sm font-mono">{{ tool.name }}</span>
                 <span class="text-xs text-text-muted">- {{ tool.desc }}</span>
               </div>
@@ -67,12 +81,25 @@
               <label class="block text-sm font-medium text-text-secondary mb-sm">
                 {{ t('settings.vlm.provider') }}
               </label>
-              <select v-model="vlmConfig.provider" class="input">
-                <option value="">{{ t('settings.vlm.disabled') }}</option>
-                <option value="openai">OpenAI (GPT-4o)</option>
-                <option value="anthropic">Anthropic (Claude 3.5)</option>
-                <option value="glm">智谱AI (GLM-4V)</option>
-                <option value="custom">{{ t('settings.vlm.custom') }}</option>
+              <select
+                v-model="vlmConfig.provider"
+                class="input"
+              >
+                <option value="">
+                  {{ t('settings.vlm.disabled') }}
+                </option>
+                <option value="openai">
+                  OpenAI (GPT-4o)
+                </option>
+                <option value="anthropic">
+                  Anthropic (Claude 3.5)
+                </option>
+                <option value="glm">
+                  智谱AI (GLM-4V)
+                </option>
+                <option value="custom">
+                  {{ t('settings.vlm.custom') }}
+                </option>
               </select>
             </div>
 
@@ -86,10 +113,10 @@
                   :type="showApiKey ? 'text' : 'password'"
                   class="input font-mono pr-10"
                   :placeholder="t('settings.vlm.apiKeyPlaceholder')"
-                />
+                >
                 <button
-                  @click="showApiKey = !showApiKey"
                   class="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+                  @click="showApiKey = !showApiKey"
                 >
                   {{ showApiKey ? '🙈' : '👁️' }}
                 </button>
@@ -105,11 +132,14 @@
                 type="text"
                 class="input font-mono"
                 placeholder="https://api.openai.com/v1/chat/completions"
-              />
+              >
             </div>
           </div>
 
-          <div v-if="vlmConfig.provider" class="space-y-lg">
+          <div
+            v-if="vlmConfig.provider"
+            class="space-y-lg"
+          >
             <div class="grid grid-cols-2 gap-md">
               <div>
                 <label class="block text-sm font-medium text-text-secondary mb-sm">
@@ -121,7 +151,7 @@
                   class="input"
                   min="5"
                   max="120"
-                />
+                >
                 <span class="text-sm text-text-muted ml-xs">s</span>
               </div>
               <div>
@@ -134,7 +164,7 @@
                   class="input"
                   min="1"
                   max="20"
-                />
+                >
               </div>
             </div>
 
@@ -150,12 +180,20 @@
       <!-- Generated Config Preview -->
       <section class="bg-surface rounded-lg p-xl border border-border">
         <div class="flex items-center justify-between mb-lg">
-          <h2 class="text-lg font-semibold">{{ t('settings.preview') }}</h2>
+          <h2 class="text-lg font-semibold">
+            {{ t('settings.preview') }}
+          </h2>
           <div class="flex gap-sm">
-            <button @click="copyConfig" class="btn-secondary btn-sm">
+            <button
+              class="btn-secondary btn-sm"
+              @click="copyConfig"
+            >
               {{ t('common.copy') }}
             </button>
-            <button @click="downloadConfig" class="btn-primary btn-sm">
+            <button
+              class="btn-primary btn-sm"
+              @click="downloadConfig"
+            >
               {{ t('settings.downloadConfig') }}
             </button>
           </div>
@@ -166,10 +204,16 @@
 
       <!-- Actions -->
       <section class="flex gap-lg">
-        <button @click="saveConfig" class="btn-primary">
+        <button
+          class="btn-primary"
+          @click="saveConfig"
+        >
           {{ t('common.save') }}
         </button>
-        <button @click="resetConfig" class="btn-ghost">
+        <button
+          class="btn-ghost"
+          @click="resetConfig"
+        >
           {{ t('common.reset') }}
         </button>
       </section>

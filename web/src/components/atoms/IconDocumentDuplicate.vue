@@ -13,8 +13,18 @@ withDefaults(defineProps<Props>(), {
 </script>
 
 <template>
-  <IconBase :size="size" :color="color">
-    <rect x="8" y="8" width="12" height="12" rx="2" ry="2" />
+  <IconBase
+    :size="size"
+    :color="color"
+  >
+    <rect
+      x="8"
+      y="8"
+      width="12"
+      height="12"
+      rx="2"
+      ry="2"
+    />
     <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
   </IconBase>
 </template>

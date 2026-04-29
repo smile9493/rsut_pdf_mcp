@@ -14,29 +14,42 @@
           :class="contentPadding ? 'p-2xl' : ''"
         >
           <!-- Page Header (optional) -->
-          <div v-if="$slots.header" class="mb-xl">
+          <div
+            v-if="$slots.header"
+            class="mb-xl"
+          >
             <slot name="header" />
           </div>
 
           <!-- Loading State -->
-          <div v-if="loading" class="flex items-center justify-center h-64">
+          <div
+            v-if="loading"
+            class="flex items-center justify-center h-64"
+          >
             <div class="flex flex-col items-center gap-md">
-              <div class="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+              <div class="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
               <span class="text-sm text-text-muted">{{ t('common.loading') }}</span>
             </div>
           </div>
 
           <!-- Error State -->
-          <div v-else-if="error" class="flex items-center justify-center h-64">
+          <div
+            v-else-if="error"
+            class="flex items-center justify-center h-64"
+          >
             <div class="flex flex-col items-center gap-md">
               <ExclamationCircleIcon class="w-12 h-12 text-error" />
               <div class="text-center">
-                <div class="text-lg font-medium text-text-primary mb-xs">{{ t('common.error') }}</div>
-                <div class="text-sm text-text-muted">{{ error }}</div>
+                <div class="text-lg font-medium text-text-primary mb-xs">
+                  {{ t('common.error') }}
+                </div>
+                <div class="text-sm text-text-muted">
+                  {{ error }}
+                </div>
               </div>
               <button 
-                @click="$emit('retry')"
                 class="btn btn-primary"
+                @click="$emit('retry')"
               >
                 {{ t('common.retry') }}
               </button>
@@ -49,7 +62,10 @@
           </div>
 
           <!-- Footer (optional) -->
-          <div v-if="$slots.footer" class="mt-xl">
+          <div
+            v-if="$slots.footer"
+            class="mt-xl"
+          >
             <slot name="footer" />
           </div>
         </div>

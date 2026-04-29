@@ -24,7 +24,11 @@ const props = withDefaults(defineProps<{
         :active="active"
         :data-index="index"
       >
-        <slot name="item" :item="item" :index="index" />
+        <slot
+          name="item"
+          :item="item"
+          :index="index"
+        />
       </DynamicScrollerItem>
     </template>
   </DynamicScroller>
