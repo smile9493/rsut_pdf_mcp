@@ -223,7 +223,7 @@ impl VlmEnhancedPipeline {
         let line_score = (line_count / 10.0).min(1.0);
         let text_score = (text_len / 500.0).min(1.0);
 
-        (line_score * 0.5 + text_score * 0.5).clamp(0.0, 1.0)
+        (line_score * 0.5 + text_score * 0.5).max(0.0).min(1.0)
     }
 }
 

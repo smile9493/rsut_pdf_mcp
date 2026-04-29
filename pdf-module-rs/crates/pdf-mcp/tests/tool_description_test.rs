@@ -332,9 +332,10 @@ fn test_parameter_enum_values_valid() {
 
         for (param_name, param_def) in props {
             if let Some(enum_values) = param_def.get("enum") {
-                let enum_array = enum_values.as_array().unwrap_or_else(|| {
-                    panic!("Enum for {} in {} is not an array", param_name, tool_name)
-                });
+                let enum_array = enum_values.as_array().expect(&format!(
+                    "Enum for {} in {} is not an array",
+                    param_name, tool_name
+                ));
 
                 assert!(
                     !enum_array.is_empty(),
@@ -363,7 +364,7 @@ fn test_description_contains_sections() {
         let tool = tools
             .iter()
             .find(|t| t["name"] == tool_name)
-            .unwrap_or_else(|| panic!("{} tool not found", tool_name));
+            .expect(&format!("{} tool not found", tool_name));
 
         let description = tool["description"].as_str().unwrap();
 
