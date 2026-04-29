@@ -4,6 +4,6 @@
   </PageLayout>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import PageLayout from './components/PageLayout.vue'
 </script>

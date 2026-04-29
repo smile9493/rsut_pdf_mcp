@@ -43,18 +43,25 @@ export default {
     auditLogs: '审计日志',
     settings: '系统设置',
     plugins: '插件管理',
+    outbox: 'Outbox 监控',
+    observability: '可观测性',
+    reconciliation: '对账监控',
+    pipeline: '提取流水线',
+    rbac: '权限管理',
+    vectorRoutes: '向量路由',
     sections: {
       main: '主要',
       operations: '操作',
-      tools: '工具',
-      monitoring: '监控',
+      mcp: 'MCP',
       settings: '设置'
-    }
+    },
+    mcpConfig: 'MCP 配置',
+    mcpMonitor: 'MCP 监控'
   },
   
   dashboard: {
     title: 'PDF 处理引擎',
-    subtitle: '高性能文本提取，支持智能路由、多引擎和实时性能监控',
+    subtitle: '基于 PDFium 的高性能 PDF MCP 服务器，支持文本提取、结构化解析和关键词搜索',
     extractionSpeed: '提取速度',
     vsBaseline: '相对基准',
     cacheHitRate: '缓存命中率',
@@ -65,6 +72,7 @@ export default {
     agentCalls: 'Agent 调用',
     engineStatus: '引擎状态',
     engine: '引擎',
+    engineDesc: 'Google PDFium FFI',
     status: '状态',
     successRate: '成功率',
     avgTime: '平均时间',
@@ -80,7 +88,13 @@ export default {
     findInDocuments: '在文档中查找',
     viewStats: '查看统计',
     performanceMetrics: '性能指标',
-    architecture: '系统架构'
+    architecture: '系统架构',
+    mcpTools: 'MCP 工具',
+    protocol: '协议',
+    vlm: 'VLM',
+    vlmDisabled: '未配置',
+    availableTools: '可用工具',
+    testTools: '测试工具'
   },
   
   extract: {
@@ -114,7 +128,13 @@ export default {
     found: '找到',
     noMatches: '无匹配',
     enterPathAndKeywords: '输入文件路径和关键词',
-    searching: '搜索中...'
+    searching: '搜索中...',
+    instructions: '使用说明',
+    step1: '填写 PDF 文件路径和关键词',
+    step2: '点击"复制命令"生成 MCP 调用命令',
+    step3: '在终端执行命令获取搜索结果',
+    tip: '提示',
+    tipText: '关键词搜索通过 MCP search_keywords 工具实现，需要本地 pdf-mcp 二进制文件'
   },
   
   engines: {
@@ -168,6 +188,7 @@ export default {
   
   settings: {
     title: '系统设置',
+    subtitle: '配置 MCP 服务器和 VLM 云端模型',
     apiConfiguration: 'API 配置',
     baseUrl: '基础 URL',
     timeout: '超时时间（秒）',
@@ -193,7 +214,28 @@ export default {
     clearAllData: '清除所有数据',
     saveSettings: '保存设置',
     settingsSavedToStorage: '设置保存到浏览器存储',
-    clearAllConfirm: '清除所有本地数据？'
+    clearAllConfirm: '清除所有本地数据？',
+    preview: '配置预览',
+    downloadConfig: '下载配置',
+    mcp: {
+      title: 'MCP 服务器配置',
+      serverPath: '服务器路径',
+      serverPathHint: '例如: pdf-mcp 或 /path/to/pdf-mcp',
+      timeout: '超时时间',
+      tools: '可用工具'
+    },
+    vlm: {
+      title: 'VLM 云端模型配置',
+      provider: '模型提供商',
+      disabled: '禁用',
+      custom: '自定义',
+      apiKey: 'API Key',
+      apiKeyPlaceholder: 'sk-xxx 或 API 密钥',
+      endpoint: 'API 端点',
+      timeout: '超时',
+      maxConcurrency: '最大并发',
+      keyWarning: 'API Key 将存储在本地配置文件中，请勿提交到版本控制'
+    }
   },
   
   status: {
@@ -229,6 +271,57 @@ export default {
       extractText: '提取 PDF 文本内容',
       searchKeywords: '在 PDF 中搜索关键词',
       extractKeywords: '提取高频关键词'
+    },
+    config: {
+      title: 'MCP 配置',
+      subtitle: '配置 MCP 客户端连接参数',
+      serverSettings: '服务器设置',
+      serverCommand: '服务器命令',
+      serverCommandHint: '例如: pdf-mcp 或 /path/to/pdf-mcp',
+      serverArgs: '命令行参数',
+      argsPlaceholder: '每行一个参数',
+      timeout: '超时时间',
+      retryCount: '重试次数',
+      envVariables: '环境变量',
+      envKey: '变量名',
+      envValue: '变量值',
+      addEnv: '添加环境变量',
+      preview: '配置预览',
+      download: '下载配置',
+      vlm: {
+        title: 'VLM 云端模型配置',
+        provider: '模型提供商',
+        customEndpoint: '自定义端点',
+        apiKey: 'API Key',
+        apiKeyPlaceholder: 'sk-xxx 或 API 密钥',
+        endpoint: 'API 端点',
+        timeout: '超时',
+        maxConcurrency: '最大并发',
+        keyWarning: 'API Key 将存储在本地配置文件中，请勿提交到版本控制'
+      }
+    },
+    monitor: {
+      title: 'MCP 监控',
+      subtitle: '实时监控客户端连接和工具调用',
+      connected: '已连接',
+      totalRequests: '总请求数',
+      requestsPerMin: '请求/分钟',
+      avgLatency: '平均延迟',
+      errorRate: '错误率',
+      clients: '客户端列表',
+      clientName: '客户端名称',
+      platform: '平台',
+      status: '状态',
+      toolCalls: '工具调用',
+      lastActivity: '最后活动',
+      tools: '工具列表',
+      logs: '实时日志',
+      allLevels: '所有级别'
+    },
+    status: {
+      connected: '已连接',
+      disconnected: '已断开',
+      error: '错误'
     }
   },
 

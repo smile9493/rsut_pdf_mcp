@@ -21,6 +21,8 @@ serde_yaml = { workspace = true }
 infer = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
+vlm-visual-gateway = { path = "../vlm-visual-gateway" }
+prometheus = { version = "0.13" }
 
 [dev-dependencies]
 tempfile = "3.10"

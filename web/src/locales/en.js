@@ -43,11 +43,18 @@ export default {
     auditLogs: 'Audit Logs',
     settings: 'Settings',
     plugins: 'Plugins',
+    outbox: 'Outbox Monitor',
+    observability: 'Observability',
+    reconciliation: 'Reconciliation',
+    pipeline: 'Pipeline',
+    rbac: 'RBAC',
+    vectorRoutes: 'Vector Routes',
     sections: {
       main: 'Main',
       operations: 'Operations',
       tools: 'Tools',
       monitoring: 'Monitoring',
+      advanced: 'Advanced',
       settings: 'Settings'
     }
   },

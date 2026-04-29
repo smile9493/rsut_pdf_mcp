@@ -1,42 +1,6 @@
 version: '3.8'
 
 services:
-  pdf-rest:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: pdf-rest-server
-    ports:
-      - "8000:8000"
-    environment:
-      - RUST_LOG=info
-      - STORAGE_TYPE=local
-      - STORAGE_LOCAL_DIR=/app/data
-      - CACHE_ENABLED=true
-      - CACHE_MAX_SIZE_MB=100
-      - AUDIT_ENABLED=true
-      - AUDIT_LOG_DIR=/app/logs/audit
-      - AUDIT_RETENTION_DAYS=30
-      - LOG_LEVEL=info
-      - LOG_FORMAT=text
-      - ENABLE_CORS=true
-      - ALLOWED_ORIGINS=*
-      - MAX_FILE_SIZE_MB=100
-      - ALLOWED_EXTENSIONS=pdf
-    volumes:
-      - pdf_data:/app/data
-      - pdf_logs:/app/logs/audit
-      - pdf_cache:/app/cache
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/x2text/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    networks:
-      - pdf-network
-
   pdf-mcp:
     build:
       context: .
@@ -48,43 +12,12 @@ services:
       - RUST_LOG=info
       - STORAGE_TYPE=local
       - STORAGE_LOCAL_DIR=/app/data
-      - CACHE_ENABLED=true
-      - CACHE_MAX_SIZE_MB=100
-      - AUDIT_ENABLED=true
-      - AUDIT_LOG_DIR=/app/logs/audit
-      - AUDIT_RETENTION_DAYS=30
-      - LOG_LEVEL=info
-      - LOG_FORMAT=text
-      - ENABLE_CORS=true
-      - ALLOWED_ORIGINS=*
       - MAX_FILE_SIZE_MB=100
-      - ALLOWED_EXTENSIONS=pdf
     volumes:
       - pdf_data:/app/data
-      - pdf_logs:/app/logs/audit
-      - pdf_cache:/app/cache
     restart: unless-stopped
-    command: ["pdf-mcp", "serve", "--transport", "sse", "--port", "8001"]
     networks:
       - pdf-network
-
-  # Optional: S3 compatible storage (MinIO)
-  # Configure MINIO_ROOT_USER and MINIO_ROOT_PASSWORD via environment
-  # minio:
-  #   image: minio/minio:latest
-  #   container_name: pdf-minio
-  #   ports:
-  #     - "9000:9000"
-  #     - "9001:9001"
-  #   environment:
-  #     - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
-  #     - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
-  #   volumes:
-  #     - minio_data:/data
-  #   command: server /data --console-address ":9001"
-  #   restart: unless-stopped
-  #   networks:
-  #     - pdf-network
 
   # Optional: Redis for caching
   redis:
@@ -101,12 +34,6 @@ services:
 volumes:
   pdf_data:
     driver: local
-  pdf_logs:
-    driver: local
-  pdf_cache:
-    driver: local
-  # minio_data:
-  #   driver: local
   redis_data:
     driver: local
 

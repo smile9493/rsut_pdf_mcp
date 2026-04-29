@@ -123,6 +123,33 @@ fn handle_tools_list(request: &JsonRpcRequest) -> JsonRpcResponse {
                 "required": ["file_path"]
             }),
         },
+        ToolDefinition {
+            name: "search_keywords".to_string(),
+            description: "Search for keywords in a PDF file and return matches with page numbers and context".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "Absolute path to the PDF file"
+                    },
+                    "keywords": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Keywords to search for"
+                    },
+                    "case_sensitive": {
+                        "type": "boolean",
+                        "description": "Case sensitive search (default: false)"
+                    },
+                    "context_length": {
+                        "type": "number",
+                        "description": "Characters of context around match (default: 50)"
+                    }
+                },
+                "required": ["file_path", "keywords"]
+            }),
+        },
     ];
 
     JsonRpcResponse::success(request.id.clone(), serde_json::json!({ "tools": tools }))
@@ -148,6 +175,7 @@ async fn handle_tools_call(
         "extract_text" => handle_extract_text(pipeline, &arguments).await,
         "extract_structured" => handle_extract_structured(pipeline, &arguments).await,
         "get_page_count" => handle_get_page_count(pipeline, &arguments).await,
+        "search_keywords" => handle_search_keywords(pipeline, &arguments).await,
         _ => return JsonRpcResponse::error(request.id.clone(), JsonRpcError::invalid_params(&format!("Unknown tool: {}", tool_name))),
     };
 
@@ -197,6 +225,96 @@ async fn handle_get_page_count(
 
     let count = pipeline.get_page_count(file_path).await?;
     Ok(vec![Content::text(format!("{}", count))])
+}
+
+async fn handle_search_keywords(
+    pipeline: &Arc<McpPdfPipeline>,
+    args: &serde_json::Value,
+) -> anyhow::Result<Vec<Content>> {
+    let file_path_str = args["file_path"].as_str().ok_or_else(|| anyhow::anyhow!("Missing file_path"))?;
+    let file_path = std::path::Path::new(file_path_str);
+
+    pdf_core::FileValidator::validate_path_safety(file_path, &default_path_config())
+        .map_err(|e| anyhow::anyhow!("Path validation failed: {}", e))?;
+
+    let keywords: Vec<String> = args["keywords"]
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("Missing keywords array"))?
+        .iter()
+        .filter_map(|k| k.as_str().map(|s| s.to_string()))
+        .collect();
+
+    if keywords.is_empty() {
+        return Err(anyhow::anyhow!("Keywords array is empty"));
+    }
+
+    let case_sensitive = args["case_sensitive"].as_bool().unwrap_or(false);
+    let context_length = args["context_length"].as_u64().unwrap_or(50) as usize;
+
+    let result = pipeline.extract_structured(file_path, &ExtractOptions::default()).await?;
+    let text = &result.extracted_text;
+
+    // OPTIMIZATION: Precompute page boundaries for O(log n) page lookup
+    let mut page_boundaries: Vec<(usize, u32)> = Vec::with_capacity(result.pages.len());
+    let mut offset = 0usize;
+    for page in &result.pages {
+        page_boundaries.push((offset, page.page_number));
+        offset += page.text.len();
+    }
+
+    // Binary search for page number
+    let find_page = |pos: usize| -> u32 {
+        match page_boundaries.binary_search_by(|(start, _)| start.cmp(&pos)) {
+            Ok(idx) => page_boundaries[idx].1,
+            Err(idx) => {
+                if idx == 0 { 1 }
+                else if idx >= page_boundaries.len() { page_boundaries.last().map(|(_, p)| *p).unwrap_or(1) }
+                else { page_boundaries[idx - 1].1 }
+            }
+        }
+    };
+
+    // OPTIMIZATION: Precompile all regex patterns
+    let patterns: Vec<regex::Regex> = keywords.iter()
+        .map(|kw| {
+            let pattern = regex::escape(kw);
+            let flags = if case_sensitive { "" } else { "(?i)" };
+            regex::Regex::new(&format!("{}{}", flags, pattern)).unwrap()
+        })
+        .collect();
+
+    // OPTIMIZATION: Estimate capacity
+    let mut matches: Vec<serde_json::Value> = Vec::with_capacity(256);
+    let mut pages_with_matches: std::collections::HashSet<u32> = std::collections::HashSet::new();
+
+    for (keyword, re) in keywords.iter().zip(patterns.iter()) {
+        for m in re.find_iter(text) {
+            let start = m.start();
+            let end = m.end();
+
+            let page_number = find_page(start);
+            pages_with_matches.insert(page_number);
+
+            // UTF-8 safe slicing
+            let ctx_start = text.floor_char_boundary(start.saturating_sub(context_length));
+            let ctx_end = text.ceil_char_boundary((end + context_length).min(text.len()));
+
+            matches.push(serde_json::json!({
+                "keyword": keyword,
+                "page": page_number,
+                "position": start,
+                "context": &text[ctx_start..ctx_end]
+            }));
+        }
+    }
+
+    let search_result = serde_json::json!({
+        "total_matches": matches.len(),
+        "pages_with_matches": pages_with_matches.len(),
+        "matches": matches
+    });
+
+    Ok(vec![Content::text(serde_json::to_string(&search_result)?)])
 }
 
 #[derive(Debug, Deserialize)]

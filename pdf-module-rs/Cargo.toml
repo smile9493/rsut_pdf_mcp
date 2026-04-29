@@ -5,6 +5,7 @@ members = [
     "crates/pdf-macros",
     "crates/pdf-core",
     "crates/pdf-mcp",
+    "crates/vlm-visual-gateway",
 ]
 
 [workspace.dependencies]
@@ -25,3 +26,4 @@ infer = "0.16"
 chrono = { version = "0.4", features = ["serde"] }
 pdf-common = { path = "crates/pdf-common" }
 pdf-macros = { path = "crates/pdf-macros" }
+pdf-core = { path = "crates/pdf-core" }

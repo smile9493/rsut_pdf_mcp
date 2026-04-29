@@ -38,81 +38,33 @@
         </div>
 
         <button
-          @click="search"
-          :disabled="!filePath || !keywordsInput || isSearching"
+          @click="copyCommand"
+          :disabled="!filePath || !keywordsInput"
           class="btn-primary w-full"
         >
-          <span v-if="isSearching" class="flex items-center justify-center gap-sm">
-            <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-            </svg>
-            {{ t('search.searching') }}
-          </span>
-          <span v-else>{{ t('common.search') }}</span>
+          {{ t('common.copy') }} {{ t('mcp.config.download') }}
         </button>
+        
+        <div v-if="filePath && keywordsInput" class="mt-lg">
+          <label class="block text-sm font-medium text-text-secondary mb-sm">MCP Command</label>
+          <pre class="bg-bg rounded-lg p-md font-mono text-sm overflow-x-auto border border-border">{{ mcpCommand }}</pre>
+        </div>
       </div>
 
-      <!-- Right: Results -->
+      <!-- Right: Instructions -->
       <div class="col-span-3">
-        <div v-if="result" class="space-y-lg">
-          <!-- Stats -->
-          <div class="grid grid-cols-4 gap-md bg-surface rounded-lg p-md border border-border">
-            <div class="text-center">
-              <div class="text-2xl font-bold text-primary">{{ result.totalMatches }}</div>
-              <div class="text-micro text-text-muted">{{ t('search.matches') }}</div>
-            </div>
-            <div class="text-center">
-              <div class="text-2xl font-bold text-primary">{{ result.pagesWithMatches?.length || 0 }}</div>
-              <div class="text-micro text-text-muted">{{ t('search.pages') }}</div>
-            </div>
-            <div class="text-center">
-              <div class="text-2xl font-bold text-primary">{{ keywords.length }}</div>
-              <div class="text-micro text-text-muted">{{ t('search.keywordsLabel') }}</div>
-            </div>
-            <div class="text-center">
-              <div class="text-2xl font-bold text-primary">{{ result.duration }}ms</div>
-              <div class="text-micro text-text-muted">{{ t('search.time') }}</div>
-            </div>
-          </div>
-
-          <!-- Matches by Keyword -->
-          <div v-for="keyword in keywords" :key="keyword" class="bg-surface rounded-lg border border-border overflow-hidden">
-            <div class="p-md border-b border-border">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-sm">
-                  <MagnifyingGlassIcon class="w-4 h-4 text-primary" />
-                  <span class="font-medium">"{{ keyword }}"</span>
-                </div>
-                <span class="badge-info">{{ getMatches(keyword).length }} {{ t('search.found') }}</span>
-              </div>
-            </div>
-            
-            <div class="max-h-64 overflow-auto">
-              <div
-                v-for="(match, idx) in getMatches(keyword)"
-                :key="idx"
-                class="p-md border-b border-border/50 last:border-0"
-              >
-                <div class="flex items-center gap-md mb-sm text-micro text-text-muted">
-                  <span>{{ t('search.page') }} {{ match.pageNumber }}</span>
-                  <span class="font-mono">{{ match.startIndex }}-{{ match.endIndex }}</span>
-                </div>
-                <div v-if="match.text" class="text-sm" v-html="highlight(match.text, keyword)"></div>
-              </div>
-              
-              <div v-if="getMatches(keyword).length === 0" class="p-md text-center text-text-muted text-sm">
-                {{ t('search.noMatches') }}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Empty -->
-        <div v-else class="h-full flex items-center justify-center text-center">
-          <div>
-            <MagnifyingGlassIcon class="w-16 h-16 mx-auto mb-md text-text-muted opacity-30" />
-            <div class="text-text-muted">{{ t('search.enterPathAndKeywords') }}</div>
+        <div class="bg-surface rounded-lg border border-border p-lg">
+          <h2 class="text-lg font-semibold mb-md">{{ t('search.instructions') }}</h2>
+          <ol class="list-decimal list-inside space-y-sm text-sm text-text-secondary">
+            <li>{{ t('search.step1') }}</li>
+            <li>{{ t('search.step2') }}</li>
+            <li>{{ t('search.step3') }}</li>
+          </ol>
+          
+          <div class="mt-lg p-md bg-primary/10 rounded border border-primary/30">
+            <p class="text-sm text-primary">
+              <strong>{{ t('search.tip') }}:</strong> {{ t('search.tipText') }}
+            </p>
           </div>
         </div>
       </div>
@@ -120,11 +72,10 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MagnifyingGlassIcon } from '@heroicons/vue/24/outline'
-import axios from 'axios'
 
 const { t } = useI18n()
 
@@ -132,90 +83,27 @@ const filePath = ref('')
 const keywordsInput = ref('')
 const caseSensitive = ref(false)
 const showContext = ref(true)
-const isSearching = ref(false)
-const result = ref(null)
 
 const keywords = computed(() => {
   return keywordsInput.value.split('\n').map(k => k.trim()).filter(k => k)
 })
 
-const search = async () => {
-  if (!filePath.value || keywords.value.length === 0) return
-
-  isSearching.value = true
-  const startTime = Date.now()
-
-  try {
-    // Extract text first
-    const extractResponse = await axios.post('/api/v1/x2text/extract-json', {
-      file_path: filePath.value
-    })
-    
-    const text = extractResponse.data.extracted_text || ''
-    const pages = extractResponse.data.pages || []
-    
-    // Search in frontend
-    const matches = []
-    keywords.value.forEach(keyword => {
-      const regex = new RegExp(
-        keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
-        caseSensitive.value ? 'g' : 'gi'
-      )
-      let match
-      while ((match = regex.exec(text)) !== null) {
-        const startIndex = match.index
-        const endIndex = startIndex + keyword.length
-        const contextLen = showContext.value ? 50 : 0
-        
-        let pageNumber = 1
-        if (pages.length > 0) {
-          let charCount = 0
-          for (const page of pages) {
-            charCount += page.text.length
-            if (startIndex < charCount) {
-              pageNumber = page.page_number
-              break
-            }
-          }
-        }
-        
-        matches.push({
-          keyword,
-          pageNumber,
-          text: text.substring(Math.max(0, startIndex - contextLen), Math.min(text.length, endIndex + contextLen)),
-          startIndex,
-          endIndex
-        })
-      }
-    })
-    
-    result.value = {
-      keywords: keywords.value,
-      matches,
-      totalMatches: matches.length,
-      pagesWithMatches: [...new Set(matches.map(m => m.pageNumber))],
-      duration: Date.now() - startTime
-    }
-  } catch (err) {
-    result.value = {
-      totalMatches: 0,
-      matches: [],
-      duration: Date.now() - startTime
-    }
-  } finally {
-    isSearching.value = false
+const mcpCommand = computed(() => {
+  const args = {
+    file_path: filePath.value,
+    keywords: keywords.value,
+    case_sensitive: caseSensitive.value,
+    context_length: showContext.value ? 50 : 0
   }
-}
+  return `echo '${JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/call',
+    params: { name: 'search_keywords', arguments: args }
+  })}' | pdf-mcp`
+})
 
-const getMatches = (keyword) => {
-  return result.value?.matches?.filter(m => m.keyword === keyword) || []
-}
-
-const highlight = (text, keyword) => {
-  const regex = new RegExp(
-    `(${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`,
-    caseSensitive.value ? 'g' : 'gi'
-  )
-  return text.replace(regex, '<mark class="bg-primary/30 text-primary px-xs rounded">$1</mark>')
+const copyCommand = async () => {
+  await navigator.clipboard.writeText(mcpCommand.value)
 }
 </script>

@@ -1,0 +1,27 @@
+[package]
+name = "vlm-visual-gateway"
+version = "0.1.0"
+edition = "2021"
+description = "VLM visual gateway: conditional escalation from Pdfium local parsing to remote VLM layout understanding"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+pdfium-render = { workspace = true }
+
+# Arena allocator for zero-copy pixel buffer
+bumpalo = { version = "3", features = ["collections"] }
+# Async HTTP client for VLM API calls
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+# Base64 encoding
+base64 = "0.22"
+# Prometheus metrics
+prometheus = { version = "0.13", features = ["process"] }
+# UUID for trace_id generation
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "test-util"] }

@@ -1,78 +1,86 @@
 # Changelog
 
+## [0.3.0] - 2026-04-29
+
+### 重大变更：奥卡姆剃刀重构
+
+移除所有冗余模块，收敛至最小可运行架构：
+
+### Removed
+
+- **REST API**: MCP stdio 是最终契约，旁路冗余
+- **Python SDK**: 官方 MCP SDK 足矣
+- **多引擎抽象**: 单一 pdfium 胜任所有场景
+- **缓存模块**: 大模型自带 Prompt Caching
+- **熔断器**: 本地 I/O 无需网络熔断
+- **SSE 传输**: stdio 是 MCP 标准
+- **智能路由**: 无路由 = 无分支预测惩罚
+- **插件系统**: 过度工程化
+- **审计日志**: 简化为日志输出
+- **存储抽象**: 无状态设计
+
+### Added
+
+- **Web Dashboard**: Vue 3 监控面板
+  - MCP 配置页面 (服务器 + VLM API Key 配置)
+  - MCP 监控仪表板 (连接状态、工具调用、日志)
+  - MCP 工具测试页面
+- **VLM 条件升级**: GPT-4o / Claude 3.5 Sonnet 集成
+  - 扫描件检测
+  - 混沌布局降级
+  - `catch_unwind` FFI 安全
+- **GitHub CI/CD**:
+  - 多平台构建 (Windows/Linux/macOS)
+  - Docker 镜像 (mcp + web)
+  - Release 自动发布
+
+### Changed
+
+- **MCP 工具收敛至 3 个**:
+  - `extract_text`: 提取纯文本
+  - `extract_structured`: 提取结构化数据
+  - `get_page_count`: 获取页数
+- **前端类型与后端 DTO 完全对齐**
+- **移除所有无用页面**: Outbox, Reconciliation, RBAC, VectorRoutes, AuditLogs
+
+### 架构
+
+```
+AI Agent (Cursor/Claude)
+    │
+    └──► pdf-mcp (stdio) ──► PdfiumEngine ──► PDF
+
+Web Dashboard (Vue 3)
+    │
+    ├── MCP 配置
+    ├── MCP 监控
+    └── 工具测试
+```
+
+---
+
 ## [0.2.0] - 2026-04-25
 
 ### Added - 插件化架构
 
 - **Plugin Registry**: `ToolRegistry` 实现，支持分类索引和能力索引
-- **ToolHandler trait**: 扩展生命周期钩子 (on_register/on_unregister)、能力声明、分类、依赖
+- **ToolHandler trait**: 扩展生命周期钩子
 - **PluginRegistry trait**: 统一注册/查询接口
 - **ToolDispatcher trait**: 工具调度/批量执行/健康检查
-- **DynamicDiscovery trait**: 动态发现/热加载/目录扫描
-
-### Added - 动态发现机制
-
-- **CompileTimeDiscovery**: 基于 `inventory` crate 的编译期工具注册
-- **RuntimeDiscovery**: 基于 `libloading` crate 的运行期动态库加载
-- **UnifiedDiscovery**: 组合两种发现机制
-
-### Added - 能力适配器
-
-- **PdfExtractorPlugin**: PDF 文本提取适配器
-- **EtlWorkflowPlugin**: ETL 工作流适配器
-- **DatabasePlugin**: 数据库操作适配器
-- **MiniMaxAdapterPlugin**: MiniMax LLM 适配器
-- **RemotePluginAdapter**: 远程服务代理适配器
 
 ### Added - 控制平面
 
-- **AuditLogger**: 审计日志记录，敏感字段脱敏
-- **RateLimiter**: 令牌桶限流，每工具独立配置
-- **CircuitBreaker**: 熔断器状态机 (Closed/Open/HalfOpen)
-- **SchemaManager**: 版本化 Schema 管理，JSON Schema 验证
-- **MetricsCollector**: 执行指标收集，Prometheus 格式导出
+- **AuditLogger**: 审计日志记录
+- **RateLimiter**: 令牌桶限流
+- **CircuitBreaker**: 熔断器状态机
+- **MetricsCollector**: 执行指标收集
 
-### Added - MCP Host 集成
-
-- **McpProtocolHandler**: JSON-RPC 2.0 协议处理
-- **Transport trait**: 传输层抽象 (Stdio/SSE/Http)
-- **McpServer**: MCP Server 启动/关闭
-- **Bootstrap**: 启动引导，自动注册内置适配器
-
-### Added - Web 管理层
-
-- **Plugin Management API**: GET /api/v1/tools, POST /api/v1/tools/{name}/execute
-- **Audit Visualization API**: 查询/导出/统计
-- **Health Check**: /health, /health/live, /health/ready
-- **Prometheus Metrics**: /metrics 端点
-
-### Added - SurrealDB 嵌入式存储
-
-- **SurrealStore**: Schema-less JSON 存储 (内存模式)
-- CRUD 操作: save/query/get/update/delete
-- 审计日志存储: save_audit_log/query_audit_logs
-- 原始 SurrealQL 执行: execute_query
-
-### Added - 测试
-
-- 6 个端到端测试 (真实 PDF 文件)
-- 4 个性能测试
-- 6 个压力测试
-
-### Changed
-
-- 扩展 `PdfModuleError` 新增 8 个错误变体
-- 扩展 `dto.rs` 新增 PluginType/RetryPolicy/RateLimitConfig/ExecutionMetric 等类型
-- 扩展 `ToolRegistry` 支持分类和能力索引
+---
 
 ## [0.1.0] - 2024-04-22
 
 ### Added
 
-- PDF 文本提取 (lopdf/pdf-extract/pdfium 三引擎)
-- 智能路由与熔断降级
-- REST API 服务
-- MCP Server (stdio/SSE)
-- 缓存 (moka)
-- 关键词提取 (jieba-rs)
+- PDF 文本提取 (pdfium 引擎)
+- MCP Server (stdio)
 - 文件验证
