@@ -1,6 +1,4 @@
-use prometheus::{
-    Encoder, Histogram, HistogramOpts, IntCounterVec, Opts, Registry, TextEncoder,
-};
+use prometheus::{Encoder, Histogram, HistogramOpts, IntCounterVec, Opts, Registry, TextEncoder};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -35,21 +33,14 @@ impl MetricsCollector {
         .expect("failed to create vlm_request_duration_seconds");
 
         let degradations_total = IntCounterVec::new(
-            Opts::new(
-                "vlm_degradations_total",
-                "Total number of VLM degradations",
-            ),
+            Opts::new("vlm_degradations_total", "Total number of VLM degradations"),
             &["reason"],
         )
         .expect("failed to create vlm_degradations_total");
 
         registry.register(Box::new(requests_total.clone())).ok();
-        registry
-            .register(Box::new(request_duration.clone()))
-            .ok();
-        registry
-            .register(Box::new(degradations_total.clone()))
-            .ok();
+        registry.register(Box::new(request_duration.clone())).ok();
+        registry.register(Box::new(degradations_total.clone())).ok();
 
         Self {
             registry,

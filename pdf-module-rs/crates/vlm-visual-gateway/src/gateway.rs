@@ -10,8 +10,7 @@ use uuid::Uuid;
 use crate::error::{VlmError, VlmResult};
 use crate::metrics::MetricsCollector;
 use crate::types::{
-    LayoutResult, PayloadMetadata, Region, RegionType,
-    VlmConfig, VlmPayload, VlmResponseRaw,
+    LayoutResult, PayloadMetadata, Region, RegionType, VlmConfig, VlmPayload, VlmResponseRaw,
 };
 
 /// VLM Gateway — the core component that dispatches visual perception

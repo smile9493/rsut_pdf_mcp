@@ -58,10 +58,7 @@ pub fn derive_builder(input: TokenStream) -> TokenStream {
 
     for field in fields {
         let field_name = field.ident.as_ref().unwrap();
-        let method_name = syn::Ident::new(
-            &format!("with_{}", field_name),
-            field_name.span(),
-        );
+        let method_name = syn::Ident::new(&format!("with_{}", field_name), field_name.span());
         let field_type = &field.ty;
 
         // Check if the field type is Option<T>

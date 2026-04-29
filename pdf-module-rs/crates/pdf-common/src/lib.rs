@@ -1,8 +1,8 @@
-pub mod error;
-pub mod dto;
 pub mod config;
+pub mod dto;
+pub mod error;
 pub mod traits;
 
-pub use error::{PdfError, Result, ErrorCategory};
-pub use dto::{ToolContext, ToolExecutionOptions};
 pub use config::AppConfig;
+pub use dto::{ToolContext, ToolExecutionOptions};
+pub use error::{ErrorCategory, PdfError, Result};

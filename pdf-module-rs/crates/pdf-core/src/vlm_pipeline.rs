@@ -179,19 +179,17 @@ impl VlmEnhancedPipeline {
         file_path: &Path,
         page_index: u32,
     ) -> PdfResult<Option<LayoutResult>> {
-        let gateway = self.gateway.as_ref().ok_or_else(|| {
-            PdfModuleError::ConfigError("VLM gateway not configured".into())
-        })?;
+        let gateway = self
+            .gateway
+            .as_ref()
+            .ok_or_else(|| PdfModuleError::ConfigError("VLM gateway not configured".into()))?;
 
         let data = std::fs::read(file_path)?;
 
         // render_page_pixels returns raw RGBA bytes — no encoding yet
-        let (pixels, width, height) = vlm_visual_gateway::render_page_pixels(
-            &data,
-            page_index,
-            self.config.render_dpi,
-        )
-        .map_err(|e| PdfModuleError::Extraction(format!("render page: {e}")))?;
+        let (pixels, width, height) =
+            vlm_visual_gateway::render_page_pixels(&data, page_index, self.config.render_dpi)
+                .map_err(|e| PdfModuleError::Extraction(format!("render page: {e}")))?;
 
         let metadata = PayloadMetadata {
             page_width: width as f32,
@@ -200,10 +198,7 @@ impl VlmEnhancedPipeline {
         };
 
         // perceive_layout accepts raw RGBA bytes and does Base64 internally
-        match gateway
-            .perceive_layout(&pixels, None, &metadata)
-            .await
-        {
+        match gateway.perceive_layout(&pixels, None, &metadata).await {
             Ok(layout) => Ok(Some(layout)),
             Err(e) => {
                 warn!("VLM perceive failed: {e} - degrading to local");
@@ -223,7 +218,7 @@ impl VlmEnhancedPipeline {
         let line_score = (line_count / 10.0).min(1.0);
         let text_score = (text_len / 500.0).min(1.0);
 
-        (line_score * 0.5 + text_score * 0.5).max(0.0).min(1.0)
+        (line_score * 0.5 + text_score * 0.5).clamp(0.0, 1.0)
     }
 }
 

@@ -2,8 +2,8 @@
 //! Corresponds to Python: config.py
 
 use crate::dto::{
-    AzureStorageConfig, Environment, GCSStorageConfig, LocalStorageConfig, LogFormat,
-    LogOutput, S3StorageConfig, StorageType,
+    AzureStorageConfig, Environment, GCSStorageConfig, LocalStorageConfig, LogFormat, LogOutput,
+    S3StorageConfig, StorageType,
 };
 use crate::error::PdfModuleError;
 use serde::{Deserialize, Serialize};
@@ -172,8 +172,7 @@ impl Default for FileStorageConfig {
 }
 
 /// Complete server configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ServerConfig {
     /// Base configuration
     pub base: BaseConfig,
@@ -193,7 +192,6 @@ pub struct ServerConfig {
     /// Security configuration
     pub security: SecurityConfig,
 }
-
 
 impl ServerConfig {
     /// Load configuration from environment variables
@@ -391,18 +389,16 @@ impl ServerConfig {
     pub fn validate(&self) -> Result<(), PdfModuleError> {
         // Validate storage configuration
         match self.storage.storage_type {
-            StorageType::Local
-                if self.storage.local.is_none() => {
-                    return Err(PdfModuleError::ConfigError(
-                        "Local storage config is required for local storage type".to_string(),
-                    ));
-                }
-            StorageType::S3
-                if self.storage.s3.is_none() => {
-                    return Err(PdfModuleError::ConfigError(
-                        "S3 storage config is required for S3 storage type".to_string(),
-                    ));
-                }
+            StorageType::Local if self.storage.local.is_none() => {
+                return Err(PdfModuleError::ConfigError(
+                    "Local storage config is required for local storage type".to_string(),
+                ));
+            }
+            StorageType::S3 if self.storage.s3.is_none() => {
+                return Err(PdfModuleError::ConfigError(
+                    "S3 storage config is required for S3 storage type".to_string(),
+                ));
+            }
             _ => {}
         }
 

@@ -197,7 +197,9 @@ impl PdfModuleError {
             Self::CircuitBreakerOpen(s) => pdf_common::PdfError::CircuitBreakerOpen(s),
             Self::SchemaValidationError(s) => pdf_common::PdfError::SchemaValidation(s),
             Self::ExecutionTimeout(ms) => pdf_common::PdfError::Timeout(ms),
-            Self::ToolUnavailable(a, b) => pdf_common::PdfError::ToolUnavailable(format!("{}: {}", a, b)),
+            Self::ToolUnavailable(a, b) => {
+                pdf_common::PdfError::ToolUnavailable(format!("{}: {}", a, b))
+            }
             Self::DiscoveryError(s) => pdf_common::PdfError::Discovery(s),
             Self::ControlPlaneError(s) => pdf_common::PdfError::ControlPlane(s),
         }

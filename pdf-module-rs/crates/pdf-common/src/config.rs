@@ -61,9 +61,17 @@ impl CacheConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum AuditBackendConfig {
-    File { log_dir: String },
-    Database { connection_string: String, table_name: String },
-    Remote { endpoint: String, api_key: String },
+    File {
+        log_dir: String,
+    },
+    Database {
+        connection_string: String,
+        table_name: String,
+    },
+    Remote {
+        endpoint: String,
+        api_key: String,
+    },
     Memory,
 }
 
@@ -318,10 +326,8 @@ impl AppConfig {
         };
 
         Ok(Self {
-            server_name: std::env::var("SERVER_NAME")
-                .unwrap_or_else(|_| "pdf-module".to_string()),
-            server_version: std::env::var("SERVER_VERSION")
-                .unwrap_or_else(|_| "0.3.0".to_string()),
+            server_name: std::env::var("SERVER_NAME").unwrap_or_else(|_| "pdf-module".to_string()),
+            server_version: std::env::var("SERVER_VERSION").unwrap_or_else(|_| "0.3.0".to_string()),
             environment,
             storage: FileStorageConfig::default(),
             cache: CacheConfig {
@@ -363,9 +369,8 @@ impl AppConfig {
 
     /// Load configuration from a TOML file
     pub fn from_file(path: &str) -> crate::Result<Self> {
-        let content = std::fs::read_to_string(path).map_err(|e| {
-            PdfError::Config(format!("Failed to read config file: {}", e))
-        })?;
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| PdfError::Config(format!("Failed to read config file: {}", e)))?;
 
         let ext = std::path::Path::new(path)
             .extension()

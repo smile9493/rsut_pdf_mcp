@@ -206,11 +206,14 @@ impl PdfError {
             | Self::MessageSend(_)
             | Self::ControlPlane(_) => ErrorCategory::Validation,
 
-            Self::Validation(_) | Self::SchemaValidation(_) | Self::ParameterMissing(_) | Self::ParameterType(_) => {
-                ErrorCategory::Validation
-            }
+            Self::Validation(_)
+            | Self::SchemaValidation(_)
+            | Self::ParameterMissing(_)
+            | Self::ParameterType(_) => ErrorCategory::Validation,
 
-            Self::Config(_) | Self::Storage(_) | Self::Audit(_) | Self::Json(_) => ErrorCategory::Config,
+            Self::Config(_) | Self::Storage(_) | Self::Audit(_) | Self::Json(_) => {
+                ErrorCategory::Config
+            }
 
             Self::Http(_) => ErrorCategory::Network,
             Self::Database(_) => ErrorCategory::Database,
@@ -307,7 +310,10 @@ mod tests {
         assert_eq!(PdfError::Timeout(5000).status_code(), 408);
         assert_eq!(PdfError::RateLimitExceeded("x".into()).status_code(), 429);
         assert_eq!(PdfError::ToolNotFound("x".into()).status_code(), 404);
-        assert_eq!(PdfError::ToolAlreadyRegistered("x".into()).status_code(), 409);
+        assert_eq!(
+            PdfError::ToolAlreadyRegistered("x".into()).status_code(),
+            409
+        );
     }
 
     #[test]
@@ -328,10 +334,7 @@ mod tests {
             PdfError::Database("x".into()).category(),
             ErrorCategory::Database
         );
-        assert_eq!(
-            PdfError::LLM("x".into()).category(),
-            ErrorCategory::LLM
-        );
+        assert_eq!(PdfError::LLM("x".into()).category(), ErrorCategory::LLM);
     }
 
     #[test]
