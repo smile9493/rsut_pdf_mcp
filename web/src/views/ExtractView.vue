@@ -70,10 +70,10 @@
         <!-- Extract Button -->
         <button
           @click="extract"
-          :disabled="!selectedFile || isExtracting"
+          :disabled="!selectedFile || loading"
           class="btn-primary w-full"
         >
-          <span v-if="isExtracting" class="flex items-center justify-center gap-sm">
+          <span v-if="loading" class="flex items-center justify-center gap-sm">
             <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
@@ -94,7 +94,7 @@
               <div class="text-micro text-text-muted">{{ t('extract.pages') }}</div>
             </div>
             <div class="text-center">
-              <div class="text-2xl font-bold text-primary">{{ formatNumber(result.textLength) }}</div>
+              <div class="text-2xl font-bold text-primary">{{ result.textLength.toLocaleString() }}</div>
               <div class="text-micro text-text-muted">{{ t('extract.chars') }}</div>
             </div>
             <div class="text-center">
@@ -131,10 +131,10 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="page in result.pages" :key="page.pageNumber">
-                  <td class="font-medium">{{ page.pageNumber }}</td>
+                <tr v-for="page in result.pages" :key="page.page_number">
+                  <td class="font-medium">{{ page.page_number }}</td>
                   <td class="font-mono">{{ page.text.length }}</td>
-                  <td class="font-mono text-micro text-text-muted">[{{ page.bbox.join(', ') }}]</td>
+                  <td class="font-mono text-micro text-text-muted">[{{ page.bbox?.join(', ') }}]</td>
                 </tr>
               </tbody>
             </table>
@@ -153,92 +153,81 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { storeToRefs } from 'pinia'
 import {
   DocumentTextIcon,
   CloudArrowUpIcon,
   XMarkIcon
 } from '@heroicons/vue/24/outline'
-import axios from 'axios'
+import { usePdfStore } from '@/stores/pdfStore'
+import type { PageMetadata } from '@/types/api'
 
 const { t } = useI18n()
+const store = usePdfStore()
+const { loading } = storeToRefs(store)
 
-const selectedFile = ref(null)
-const selectedEngine = ref('')
-const extractMode = ref('text')
-const isExtracting = ref(false)
-const result = ref(null)
-const copied = ref(false)
-
-const handleFileSelect = (e) => {
-  const file = e.target.files[0]
-  if (file && file.name.endsWith('.pdf')) {
-    selectedFile.value = file
-  }
+interface ExtractResult {
+  text: string
+  pageCount: number
+  textLength: number
+  engine: string
+  duration: number
+  pages?: PageMetadata[]
 }
 
-const clearFile = () => {
+const selectedFile = ref<File | null>(null)
+const selectedEngine = ref('')
+const extractMode = ref<'text' | 'structured'>('text')
+const result = ref<ExtractResult | null>(null)
+const copied = ref(false)
+
+const handleFileSelect = (e: Event): void => {
+  const target = e.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (file?.name.endsWith('.pdf')) selectedFile.value = file
+}
+
+const clearFile = (): void => {
   selectedFile.value = null
   result.value = null
 }
 
-const formatSize = (bytes) => {
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
+const formatSize = (bytes: number): string => {
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  return `${(bytes / Math.pow(1024, i) * 100).toFixed(2)} ${['B', 'KB', 'MB'][i]}`
 }
 
-const formatNumber = (num) => {
-  return num.toLocaleString()
-}
-
-const extract = async () => {
+const extract = async (): Promise<void> => {
   if (!selectedFile.value) return
 
-  isExtracting.value = true
   const startTime = Date.now()
+  const adapter = selectedEngine.value || null
 
-  try {
-    const formData = new FormData()
-    formData.append('file', selectedFile.value)
-    if (selectedEngine.value) {
-      formData.append('adapter', selectedEngine.value)
-    }
+  const data = extractMode.value === 'structured'
+    ? await store.extractStructuredFromFile(selectedFile.value, adapter)
+    : await store.extractTextFromFile(selectedFile.value, adapter)
 
-    const endpoint = extractMode.value === 'structured'
-      ? '/api/v1/x2text/extract-json'
-      : '/api/v1/x2text/extract'
+  if (!data) return
 
-    const response = await axios.post(endpoint, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
+  const text = (data as { text?: string; extracted_text?: string }).text
+    || (data as { extracted_text?: string }).extracted_text
+    || ''
 
-    const data = response.data
-    result.value = {
-      text: data.text || data.extracted_text || '',
-      pageCount: data.page_count || 1,
-      textLength: (data.text || data.extracted_text || '').length,
-      engine: selectedEngine.value || 'auto',
-      duration: Date.now() - startTime,
-      pages: data.pages
-    }
-  } catch (err) {
-    result.value = {
-      text: `Error: ${err.response?.data?.message || err.message}`,
-      pageCount: 0,
-      textLength: 0,
-      engine: 'error',
-      duration: Date.now() - startTime
-    }
-  } finally {
-    isExtracting.value = false
+  result.value = {
+    text,
+    pageCount: (data as { page_count?: number }).page_count || 1,
+    textLength: text.length,
+    engine: selectedEngine.value || 'auto',
+    duration: Date.now() - startTime,
+    pages: (data as { pages?: PageMetadata[] }).pages
   }
 }
 
-const copyText = async () => {
+const copyText = async (): Promise<void> => {
+  if (!result.value) return
   await navigator.clipboard.writeText(result.value.text)
   copied.value = true
   setTimeout(() => { copied.value = false }, 2000)

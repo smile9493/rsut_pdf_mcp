@@ -2,99 +2,189 @@
 
 ## 概述
 
-本指南说明如何配置 Agent (Cursor/Claude Desktop) 连接 PDF Module MCP 服务。
+本指南说明如何配置 AI Agent (Cursor/Claude Desktop) 连接 PDF Module MCP 服务。
 
 ## 架构
 
 ```
-┌─────────────────┐         ┌──────────────────┐
-│  客户端         │         │  服务器          │
-│                 │         │                  │
-│  ┌───────────┐  │         │  ┌────────────┐ │
-│  │  Cursor   │  │  SSE    │  │  MCP SSE   │ │
-│  │  Claude   │──┼─────────┼─►│  Server    │ │
-│  └───────────┘  │  :8001  │  │  :8001     │ │
-└─────────────────┘         │  └────────────┘ │
-                            └──────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                  AI Agent (Cursor/Claude Desktop)           │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ JSON-RPC over stdio
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     pdf-mcp (二进制客户端)                   │
+│  Windows: pdf-mcp.exe  │  Linux/macOS: pdf-mcp             │
+├─────────────────────────────────────────────────────────────┤
+│  MCP Tools:                                                 │
+│  • extract_text        - 提取纯文本                         │
+│  • extract_structured  - 提取结构化数据 (per-page + bbox)   │
+│  • get_page_count      - 获取页数                           │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-## 方式一: 远程 SSE 连接 (推荐)
+---
 
-### 1. 服务器端启动
+## 方式一: 下载预编译二进制 (推荐)
+
+### 1. 下载
+
+从 [GitHub Releases](https://github.com/smile9493/rsut_pdf_mcp/releases) 下载对应平台版本：
+
+| 平台 | 文件 | 解压后 |
+|------|------|--------|
+| Windows x64 | `pdf-mcp-windows-x64.zip` | `pdf-mcp.exe` |
+| Linux x64 | `pdf-mcp-linux-x64.tar.gz` | `pdf-mcp` |
+| macOS x64 | `pdf-mcp-macos-x64.tar.gz` | `pdf-mcp` |
+| macOS ARM64 | `pdf-mcp-macos-arm64.tar.gz` | `pdf-mcp` |
+
+### 2. 解压
 
 ```bash
-docker compose up -d
+# Linux/macOS
+tar -xzf pdf-mcp-linux-x64.tar.gz
+chmod +x pdf-mcp
+
+# Windows: 解压 zip 文件
 ```
 
-### 2. Cursor 配置
+### 3. 配置 Agent
 
-创建 `~/.cursor/mcp.json` (Mac/Linux) 或 `%USERPROFILE%\.cursor\mcp.json` (Windows):
+---
 
-```json
-{
-  "mcpServers": {
-    "pdf-module": {
-      "url": "http://YOUR_SERVER_IP:8001/sse",
-      "transport": "sse"
-    }
-  }
-}
-```
-
-### 3. Claude Desktop 配置
-
-编辑配置文件:
-- Mac: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "pdf-module": {
-      "url": "http://YOUR_SERVER_IP:8001/sse",
-      "transport": "sse"
-    }
-  }
-}
-```
-
-### 4. 防火墙配置
+## 方式二: 从源码编译
 
 ```bash
-sudo ufw allow 8001/tcp
+git clone https://github.com/smile9493/rsut_pdf_mcp.git
+cd rsut_pdf_mcp/pdf-module-rs
+cargo build --release
 ```
 
-## 方式二: 本地 stdio 连接
+二进制位于: `target/release/pdf-mcp`
 
-适合服务器和客户端在同一机器:
+---
+
+## Cursor 配置
+
+配置文件: `~/.cursor/mcp.json`
+
+### 基础配置
 
 ```json
 {
   "mcpServers": {
     "pdf-module": {
-      "command": "docker",
-      "args": ["exec", "-i", "pdf-mcp-server", "pdf-mcp"]
+      "command": "/path/to/pdf-mcp"
     }
   }
 }
 ```
+
+### 带 VLM 配置
+
+```json
+{
+  "mcpServers": {
+    "pdf-module": {
+      "command": "/path/to/pdf-mcp",
+      "env": {
+        "VLM_API_KEY": "sk-xxx",
+        "VLM_ENDPOINT": "https://api.openai.com/v1/chat/completions",
+        "VLM_MODEL": "gpt-4o",
+        "VLM_TIMEOUT_SECS": "30",
+        "VLM_MAX_CONCURRENCY": "5"
+      }
+    }
+  }
+}
+```
+
+---
+
+## Claude Desktop 配置
+
+配置文件位置:
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+- **Linux**: `~/.config/claude/claude_desktop_config.json`
+
+### 基础配置
+
+```json
+{
+  "mcpServers": {
+    "pdf-module": {
+      "command": "/path/to/pdf-mcp"
+    }
+  }
+}
+```
+
+### 带 VLM 配置
+
+```json
+{
+  "mcpServers": {
+    "pdf-module": {
+      "command": "/path/to/pdf-mcp",
+      "env": {
+        "VLM_API_KEY": "sk-ant-xxx",
+        "VLM_ENDPOINT": "https://api.anthropic.com/v1/messages",
+        "VLM_MODEL": "claude-3.5-sonnet"
+      }
+    }
+  }
+}
+```
+
+---
+
+## VLM 环境变量
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `VLM_API_KEY` | API 密钥 | - |
+| `VLM_ENDPOINT` | API 端点 | - |
+| `VLM_MODEL` | 模型 (`gpt-4o` / `claude-3.5-sonnet`) | `gpt-4o` |
+| `VLM_TIMEOUT_SECS` | 请求超时 (秒) | `30` |
+| `VLM_MAX_CONCURRENCY` | 最大并发数 | `5` |
+
+---
 
 ## 可用工具
 
-配置完成后，Agent 可调用:
+| 工具 | 说明 | 参数 |
+|------|------|------|
+| `extract_text` | 提取 PDF 纯文本 | `file_path` |
+| `extract_structured` | 提取结构化数据 (per-page + bbox) | `file_path` |
+| `get_page_count` | 获取 PDF 页数 | `file_path` |
 
-| 工具 | 说明 |
-|------|------|
-| `extract_text` | 提取 PDF 纯文本 |
-| `extract_structured` | 提取结构化数据 (per-page + bbox) |
-| `get_page_count` | 获取页数 |
+---
+
+## Web Dashboard
+
+访问 http://localhost:5173 使用图形界面：
+
+- **MCP 配置** (`/mcp-config`): 可视化配置 MCP + VLM
+- **MCP 监控** (`/mcp-monitor`): 实时监控工具调用
+- **MCP 工具** (`/mcp-tools`): 测试工具调用
+
+---
 
 ## 故障排查
 
-```bash
-# 测试端口连通
-telnet YOUR_SERVER_IP 8001
+### 测试 MCP 连接
 
-# 查看容器日志
-docker logs pdf-mcp-server
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}' | ./pdf-mcp
 ```
+
+预期输出包含 `serverInfo`。
+
+### 常见问题
+
+| 问题 | 解决 |
+|------|------|
+| `permission denied` | `chmod +x pdf-mcp` |
+| `VLM_API_KEY not set` | 检查 env 配置 |
+| 工具不显示 | 重启 Agent |

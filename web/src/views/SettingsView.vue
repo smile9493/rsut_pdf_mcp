@@ -2,284 +2,281 @@
   <div class="p-2xl">
     <header class="mb-2xl">
       <h1 class="text-h1 font-bold">{{ t('settings.title') }}</h1>
+      <p class="text-text-secondary mt-sm">{{ t('settings.subtitle') }}</p>
     </header>
 
-    <div class="grid grid-cols-2 gap-xl">
-      <!-- API -->
-      <div class="bg-surface rounded-lg p-lg border border-border">
-        <h2 class="text-h2 font-semibold mb-lg">{{ t('settings.apiConfiguration') }}</h2>
-
-        <div class="space-y-lg">
-          <div>
-            <label class="block text-sm font-medium text-text-secondary mb-sm">{{ t('settings.baseUrl') }}</label>
-            <input v-model="settings.apiBaseUrl" type="text" class="input-mono" />
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-text-secondary mb-sm">{{ t('settings.timeout') }}</label>
-            <input v-model.number="settings.timeout" type="number" class="input" min="10" max="300" />
-          </div>
-
-          <label class="flex items-center gap-sm cursor-pointer">
-            <input v-model="settings.retryOnError" type="checkbox" class="w-4 h-4 text-primary rounded" />
-            <span class="text-sm">{{ t('settings.retryOnError') }}</span>
-          </label>
-        </div>
-      </div>
-
-      <!-- LLM Configuration -->
-      <div class="bg-surface rounded-lg p-lg border border-border">
-        <h2 class="text-h2 font-semibold mb-lg">{{ t('settings.llmConfiguration') }}</h2>
-
-        <div class="space-y-lg">
-          <div>
-            <label class="block text-sm font-medium text-text-secondary mb-sm">{{ t('settings.llmProvider') }}</label>
-            <select v-model="settings.llm.provider" class="input">
-              <option value="openai">OpenAI</option>
-              <option value="glm">智谱AI (GLM-4.6V)</option>
-              <option value="azure">Azure OpenAI</option>
-              <option value="ollama">Ollama (本地)</option>
-            </select>
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-text-secondary mb-sm">{{ t('settings.llmModel') }}</label>
-            <select v-model="settings.llm.model" class="input">
-              <optgroup v-if="settings.llm.provider === 'openai'" label="OpenAI">
-                <option value="gpt-4o">GPT-4o (多模态)</option>
-                <option value="gpt-4o-mini">GPT-4o Mini</option>
-                <option value="gpt-4-turbo">GPT-4 Turbo</option>
-              </optgroup>
-              <optgroup v-if="settings.llm.provider === 'glm'" label="智谱AI">
-                <option value="glm-4.6v">GLM-4.6V (多模态)</option>
-                <option value="glm-4.6v-flashx">GLM-4.6V-FlashX (轻量)</option>
-                <option value="glm-4.6v-flash">GLM-4.6V-Flash (免费)</option>
-                <option value="glm-4">GLM-4</option>
-              </optgroup>
-              <optgroup v-if="settings.llm.provider === 'azure'" label="Azure">
-                <option value="gpt-4o">GPT-4o</option>
-                <option value="gpt-4">GPT-4</option>
-              </optgroup>
-              <optgroup v-if="settings.llm.provider === 'ollama'" label="Ollama">
-                <option value="llama3">Llama 3</option>
-                <option value="llava">LLaVA (多模态)</option>
-                <option value="mistral">Mistral</option>
-              </optgroup>
-            </select>
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-text-secondary mb-sm">{{ t('settings.llmApiKey') }}</label>
-            <input
-              v-model="settings.llm.apiKey"
-              type="password"
-              class="input-mono"
-              :placeholder="t('settings.llmApiKeyPlaceholder')"
-            />
-          </div>
-
-          <div v-if="settings.llm.provider === 'glm'">
-            <label class="block text-sm font-medium text-text-secondary mb-sm">{{ t('settings.llmBaseUrl') }}</label>
-            <input
-              v-model="settings.llm.baseUrl"
-              type="text"
-              class="input-mono"
-              placeholder="https://open.bigmodel.cn/api/paas/v4"
-            />
-          </div>
-
-          <div v-if="settings.llm.provider === 'ollama'">
-            <label class="block text-sm font-medium text-text-secondary mb-sm">{{ t('settings.llmBaseUrl') }}</label>
-            <input
-              v-model="settings.llm.baseUrl"
-              type="text"
-              class="input-mono"
-              placeholder="http://localhost:11434"
-            />
-          </div>
-
-          <div class="grid grid-cols-2 gap-md">
+    <div class="space-y-xl">
+      <!-- MCP Server Configuration -->
+      <section class="bg-surface rounded-lg p-xl border border-border">
+        <h2 class="text-lg font-semibold mb-lg">{{ t('settings.mcp.title') }}</h2>
+        
+        <div class="grid grid-cols-2 gap-xl">
+          <div class="space-y-lg">
             <div>
-              <label class="block text-sm font-medium text-text-secondary mb-sm">{{ t('settings.llmTemperature') }}</label>
+              <label class="block text-sm font-medium text-text-secondary mb-sm">
+                {{ t('settings.mcp.serverPath') }}
+              </label>
               <input
-                v-model.number="settings.llm.temperature"
-                type="number"
-                class="input"
-                min="0"
-                max="2"
-                step="0.1"
+                v-model="mcpConfig.serverCommand"
+                type="text"
+                class="input font-mono"
+                placeholder="pdf-mcp"
               />
+              <p class="text-micro text-text-muted mt-xs">{{ t('settings.mcp.serverPathHint') }}</p>
             </div>
+
             <div>
-              <label class="block text-sm font-medium text-text-secondary mb-sm">{{ t('settings.llmMaxTokens') }}</label>
+              <label class="block text-sm font-medium text-text-secondary mb-sm">
+                {{ t('settings.mcp.timeout') }}
+              </label>
               <input
-                v-model.number="settings.llm.maxTokens"
+                v-model.number="mcpConfig.timeout"
                 type="number"
                 class="input"
-                min="100"
-                max="128000"
+                min="1000"
+                max="300000"
+                step="1000"
+              />
+              <span class="text-sm text-text-muted ml-sm">ms</span>
+            </div>
+          </div>
+
+          <div class="space-y-lg">
+            <h3 class="text-sm font-medium text-text-secondary">{{ t('settings.mcp.tools') }}</h3>
+            <div class="space-y-sm">
+              <div v-for="tool in mcpTools" :key="tool.name" class="flex items-center gap-sm">
+                <div class="w-2 h-2 rounded-full bg-success"></div>
+                <span class="text-sm font-mono">{{ tool.name }}</span>
+                <span class="text-xs text-text-muted">- {{ tool.desc }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VLM Configuration -->
+      <section class="bg-surface rounded-lg p-xl border border-border">
+        <h2 class="text-lg font-semibold mb-lg flex items-center gap-sm">
+          {{ t('settings.vlm.title') }}
+          <span class="badge badge-warning text-micro">可选</span>
+        </h2>
+        
+        <div class="grid grid-cols-2 gap-xl">
+          <div class="space-y-lg">
+            <div>
+              <label class="block text-sm font-medium text-text-secondary mb-sm">
+                {{ t('settings.vlm.provider') }}
+              </label>
+              <select v-model="vlmConfig.provider" class="input">
+                <option value="">{{ t('settings.vlm.disabled') }}</option>
+                <option value="openai">OpenAI (GPT-4o)</option>
+                <option value="anthropic">Anthropic (Claude 3.5)</option>
+                <option value="glm">智谱AI (GLM-4V)</option>
+                <option value="custom">{{ t('settings.vlm.custom') }}</option>
+              </select>
+            </div>
+
+            <div v-if="vlmConfig.provider">
+              <label class="block text-sm font-medium text-text-secondary mb-sm">
+                {{ t('settings.vlm.apiKey') }}
+              </label>
+              <div class="relative">
+                <input
+                  v-model="vlmConfig.apiKey"
+                  :type="showApiKey ? 'text' : 'password'"
+                  class="input font-mono pr-10"
+                  :placeholder="t('settings.vlm.apiKeyPlaceholder')"
+                />
+                <button
+                  @click="showApiKey = !showApiKey"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+                >
+                  {{ showApiKey ? '🙈' : '👁️' }}
+                </button>
+              </div>
+            </div>
+
+            <div v-if="vlmConfig.provider === 'custom'">
+              <label class="block text-sm font-medium text-text-secondary mb-sm">
+                {{ t('settings.vlm.endpoint') }}
+              </label>
+              <input
+                v-model="vlmConfig.endpoint"
+                type="text"
+                class="input font-mono"
+                placeholder="https://api.openai.com/v1/chat/completions"
               />
             </div>
           </div>
 
-          <label class="flex items-center gap-sm cursor-pointer">
-            <input v-model="settings.llm.enableVision" type="checkbox" class="w-4 h-4 text-primary rounded" />
-            <span class="text-sm">{{ t('settings.llmEnableVision') }}</span>
-          </label>
-        </div>
-      </div>
+          <div v-if="vlmConfig.provider" class="space-y-lg">
+            <div class="grid grid-cols-2 gap-md">
+              <div>
+                <label class="block text-sm font-medium text-text-secondary mb-sm">
+                  {{ t('settings.vlm.timeout') }}
+                </label>
+                <input
+                  v-model.number="vlmConfig.timeout"
+                  type="number"
+                  class="input"
+                  min="5"
+                  max="120"
+                />
+                <span class="text-sm text-text-muted ml-xs">s</span>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-text-secondary mb-sm">
+                  {{ t('settings.vlm.maxConcurrency') }}
+                </label>
+                <input
+                  v-model.number="vlmConfig.maxConcurrency"
+                  type="number"
+                  class="input"
+                  min="1"
+                  max="20"
+                />
+              </div>
+            </div>
 
-      <!-- Defaults -->
-      <div class="bg-surface rounded-lg p-lg border border-border">
-        <h2 class="text-h2 font-semibold mb-lg">{{ t('settings.defaults') }}</h2>
-
-        <div class="space-y-lg">
-          <div>
-            <label class="block text-sm font-medium text-text-secondary mb-sm">{{ t('settings.engine') }}</label>
-            <select v-model="settings.defaultEngine" class="input">
-              <option value="">{{ t('common.auto') }}</option>
-              <option value="lopdf">Lopdf</option>
-              <option value="pdf-extract">PDF Extract</option>
-              <option value="pdfium">PDFium</option>
-            </select>
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-text-secondary mb-sm">{{ t('settings.mode') }}</label>
-            <select v-model="settings.defaultMode" class="input">
-              <option value="text">{{ t('extract.textOnly') }}</option>
-              <option value="structured">{{ t('extract.structured') }}</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <!-- Display -->
-      <div class="bg-surface rounded-lg p-lg border border-border">
-        <h2 class="text-h2 font-semibold mb-lg">{{ t('settings.display') }}</h2>
-
-        <div class="space-y-lg">
-          <div>
-            <label class="block text-sm font-medium text-text-secondary mb-sm">{{ t('settings.theme') }}</label>
-            <div class="flex gap-md">
-              <label class="flex items-center gap-sm cursor-pointer">
-                <input v-model="settings.theme" type="radio" value="dark" class="w-4 h-4 text-primary" />
-                <span class="text-sm">{{ t('common.dark') }}</span>
-              </label>
-              <label class="flex items-center gap-sm cursor-pointer">
-                <input v-model="settings.theme" type="radio" value="light" class="w-4 h-4 text-primary" />
-                <span class="text-sm">{{ t('common.light') }}</span>
-              </label>
+            <div class="p-md bg-warning/10 rounded border border-warning/30">
+              <p class="text-sm text-warning">
+                ⚠️ {{ t('settings.vlm.keyWarning') }}
+              </p>
             </div>
           </div>
-
-          <label class="flex items-center gap-sm cursor-pointer">
-            <input v-model="settings.showNotifications" type="checkbox" class="w-4 h-4 text-primary rounded" />
-            <span class="text-sm">{{ t('settings.showNotifications') }}</span>
-          </label>
         </div>
-      </div>
+      </section>
 
-      <!-- Storage -->
-      <div class="bg-surface rounded-lg p-lg border border-border">
-        <h2 class="text-h2 font-semibold mb-lg">{{ t('settings.storage') }}</h2>
-
-        <div class="space-y-lg">
-          <label class="flex items-center gap-sm cursor-pointer">
-            <input v-model="settings.saveHistory" type="checkbox" class="w-4 h-4 text-primary rounded" />
-            <span class="text-sm">{{ t('settings.saveHistory') }}</span>
-          </label>
-
-          <label class="flex items-center gap-sm cursor-pointer">
-            <input v-model="settings.clearCacheOnExit" type="checkbox" class="w-4 h-4 text-primary rounded" />
-            <span class="text-sm">{{ t('settings.clearCacheOnExit') }}</span>
-          </label>
-
-          <button @click="clearAllData" class="btn-secondary w-full text-error hover:bg-error/10">
-            {{ t('settings.clearAllData') }}
-          </button>
+      <!-- Generated Config Preview -->
+      <section class="bg-surface rounded-lg p-xl border border-border">
+        <div class="flex items-center justify-between mb-lg">
+          <h2 class="text-lg font-semibold">{{ t('settings.preview') }}</h2>
+          <div class="flex gap-sm">
+            <button @click="copyConfig" class="btn-secondary btn-sm">
+              {{ t('common.copy') }}
+            </button>
+            <button @click="downloadConfig" class="btn-primary btn-sm">
+              {{ t('settings.downloadConfig') }}
+            </button>
+          </div>
         </div>
-      </div>
+        
+        <pre class="bg-bg rounded-lg p-lg font-mono text-sm overflow-x-auto max-h-96"><code>{{ configJson }}</code></pre>
+      </section>
 
       <!-- Actions -->
-      <div class="col-span-2 bg-surface rounded-lg p-lg border border-border">
-        <div class="flex items-center justify-between">
-          <div>
-            <h3 class="text-sm font-medium">{{ t('settings.saveSettings') }}</h3>
-            <p class="text-micro text-text-muted">{{ t('settings.settingsSavedToStorage') }}</p>
-          </div>
-          <div class="flex gap-sm">
-            <button @click="resetSettings" class="btn-secondary">{{ t('common.reset') }}</button>
-            <button @click="saveSettings" class="btn-primary">{{ t('common.save') }}</button>
-          </div>
-        </div>
-      </div>
+      <section class="flex gap-lg">
+        <button @click="saveConfig" class="btn-primary">
+          {{ t('common.save') }}
+        </button>
+        <button @click="resetConfig" class="btn-ghost">
+          {{ t('common.reset') }}
+        </button>
+      </section>
     </div>
   </div>
 </template>
 
-<script setup>
-import { ref, onMounted } from 'vue'
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 
-const defaultSettings = {
-  apiBaseUrl: 'http://localhost:8000',
-  timeout: 60,
-  retryOnError: true,
-  defaultEngine: '',
-  defaultMode: 'text',
-  theme: 'dark',
-  showNotifications: true,
-  saveHistory: true,
-  clearCacheOnExit: false,
-  llm: {
-    provider: 'glm',
-    model: 'glm-4.6v',
-    apiKey: '',
-    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-    temperature: 0.0,
-    maxTokens: 4096,
-    enableVision: true
-  }
-}
+const showApiKey = ref(false)
 
-const settings = ref({ ...defaultSettings })
+const mcpTools = [
+  { name: 'extract_text', desc: '提取纯文本' },
+  { name: 'extract_structured', desc: '提取结构化数据' },
+  { name: 'get_page_count', desc: '获取页数' },
+  { name: 'search_keywords', desc: '关键词搜索' }
+]
 
-const loadSettings = () => {
-  const saved = localStorage.getItem('pdf-module-settings')
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved)
-      settings.value = {
-        ...defaultSettings,
-        ...parsed,
-        llm: { ...defaultSettings.llm, ...(parsed.llm || {}) }
-      }
-    } catch {
-      settings.value = { ...defaultSettings }
-    }
-  }
-}
-
-const saveSettings = () => {
-  localStorage.setItem('pdf-module-settings', JSON.stringify(settings.value))
-}
-
-const resetSettings = () => {
-  settings.value = { ...defaultSettings }
-}
-
-const clearAllData = () => {
-  if (confirm(t('settings.clearAllConfirm'))) {
-    localStorage.clear()
-    sessionStorage.clear()
-    loadSettings()
-  }
-}
-
-onMounted(() => {
-  loadSettings()
+const mcpConfig = ref({
+  serverCommand: 'pdf-mcp',
+  timeout: 30000
 })
+
+const vlmConfig = ref({
+  provider: '',
+  apiKey: '',
+  endpoint: '',
+  timeout: 30,
+  maxConcurrency: 5
+})
+
+watch(() => vlmConfig.value.provider, (p) => {
+  if (p === 'openai') {
+    vlmConfig.value.endpoint = 'https://api.openai.com/v1/chat/completions'
+  } else if (p === 'anthropic') {
+    vlmConfig.value.endpoint = 'https://api.anthropic.com/v1/messages'
+  } else if (p === 'glm') {
+    vlmConfig.value.endpoint = 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
+  }
+})
+
+const configJson = computed(() => {
+  const env: Record<string, string> = {}
+  
+  if (vlmConfig.value.provider && vlmConfig.value.apiKey) {
+    env.VLM_API_KEY = vlmConfig.value.apiKey
+  }
+  if (vlmConfig.value.endpoint) {
+    env.VLM_ENDPOINT = vlmConfig.value.endpoint
+  }
+  if (vlmConfig.value.provider === 'anthropic') {
+    env.VLM_MODEL = 'claude-3.5-sonnet'
+  } else if (vlmConfig.value.provider === 'glm') {
+    env.VLM_MODEL = 'glm-4v'
+  } else if (vlmConfig.value.provider === 'openai') {
+    env.VLM_MODEL = 'gpt-4o'
+  }
+  if (vlmConfig.value.provider) {
+    env.VLM_TIMEOUT_SECS = String(vlmConfig.value.timeout)
+    env.VLM_MAX_CONCURRENCY = String(vlmConfig.value.maxConcurrency)
+  }
+
+  return JSON.stringify({
+    mcpServers: {
+      'pdf-module': {
+        command: mcpConfig.value.serverCommand,
+        env: Object.keys(env).length > 0 ? env : undefined
+      }
+    }
+  }, null, 2)
+})
+
+function saveConfig() {
+  localStorage.setItem('mcp-config', JSON.stringify(mcpConfig.value))
+  localStorage.setItem('vlm-config', JSON.stringify(vlmConfig.value))
+}
+
+function resetConfig() {
+  mcpConfig.value = { serverCommand: 'pdf-mcp', timeout: 30000 }
+  vlmConfig.value = { provider: '', apiKey: '', endpoint: '', timeout: 30, maxConcurrency: 5 }
+}
+
+async function copyConfig() {
+  await navigator.clipboard.writeText(configJson.value)
+}
+
+function downloadConfig() {
+  const blob = new Blob([configJson.value], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'claude_desktop_config.json'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// Load saved config
+const savedMcp = localStorage.getItem('mcp-config')
+if (savedMcp) {
+  try { Object.assign(mcpConfig.value, JSON.parse(savedMcp)) } catch {}
+}
+const savedVlm = localStorage.getItem('vlm-config')
+if (savedVlm) {
+  try { Object.assign(vlmConfig.value, JSON.parse(savedVlm)) } catch {}
+}
 </script>

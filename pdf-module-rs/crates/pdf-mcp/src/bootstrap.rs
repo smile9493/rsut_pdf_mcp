@@ -2,7 +2,6 @@
 //! Initializes the MCP server with tool discovery and registration
 
 use crate::mcp_server::{McpServer, McpServerConfig};
-use crate::transport::TransportType;
 use pdf_core::plugin::{
     DatabasePlugin, EtlWorkflowPlugin, MiniMaxAdapterPlugin, MiniMaxConfig, PdfExtractorPlugin,
     ToolHandler,
@@ -14,8 +13,6 @@ use tracing::{info, warn};
 /// Bootstrap configuration
 #[derive(Debug, Clone)]
 pub struct BootstrapConfig {
-    /// Transport type
-    pub transport: TransportType,
     /// Enable compile-time discovery
     pub enable_compile_time_discovery: bool,
     /// Enable runtime discovery
@@ -31,7 +28,6 @@ pub struct BootstrapConfig {
 impl Default for BootstrapConfig {
     fn default() -> Self {
         Self {
-            transport: TransportType::default(),
             enable_compile_time_discovery: true,
             enable_runtime_discovery: false,
             plugin_dirs: vec![],
@@ -42,36 +38,25 @@ impl Default for BootstrapConfig {
 }
 
 impl BootstrapConfig {
-    /// Create a new bootstrap configuration
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Set transport type
-    pub fn with_transport(mut self, transport: TransportType) -> Self {
-        self.transport = transport;
-        self
-    }
-
-    /// Enable runtime discovery
     pub fn with_runtime_discovery(mut self) -> Self {
         self.enable_runtime_discovery = true;
         self
     }
 
-    /// Add plugin directory
     pub fn with_plugin_dir(mut self, dir: std::path::PathBuf) -> Self {
         self.plugin_dirs.push(dir);
         self
     }
 
-    /// Disable built-in adapters
     pub fn without_builtin_adapters(mut self) -> Self {
         self.register_builtin_adapters = false;
         self
     }
 
-    /// Enable MiniMax adapter
     pub fn with_minimax(mut self, config: MiniMaxConfig) -> Self {
         self.minimax_config = Some(config);
         self
@@ -87,7 +72,6 @@ pub async fn bootstrap(
     info!("Bootstrapping MCP server");
 
     let server_config = McpServerConfig {
-        transport: config.transport,
         enable_compile_time_discovery: config.enable_compile_time_discovery,
         enable_runtime_discovery: config.enable_runtime_discovery,
         plugin_dirs: config.plugin_dirs,

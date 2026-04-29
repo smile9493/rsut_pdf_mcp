@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import IconDocumentText from '@/components/atoms/IconDocumentText.vue'
 import IconChevronLeft from '@/components/atoms/IconChevronLeft.vue'
@@ -13,13 +13,7 @@ import IconMcp from '@/components/atoms/IconMcp.vue'
 import IconEngine from '@/components/atoms/IconEngine.vue'
 import IconPlugin from '@/components/atoms/IconPlugin.vue'
 import IconStats from '@/components/atoms/IconStats.vue'
-import IconAudit from '@/components/atoms/IconAudit.vue'
 import IconSettings from '@/components/atoms/IconSettings.vue'
-import IconOutbox from '@/components/atoms/IconOutbox.vue'
-import IconReconcile from '@/components/atoms/IconReconcile.vue'
-import IconPipeline from '@/components/atoms/IconPipeline.vue'
-import IconShield from '@/components/atoms/IconShield.vue'
-import IconRoute from '@/components/atoms/IconRoute.vue'
 import { setLanguage, getLanguage } from '@/i18n'
 import { setTheme, getTheme } from '@/theme'
 import type { Component } from 'vue'
@@ -52,35 +46,8 @@ const navSections: NavSection[] = [
     items: [
       { path: '/extract', labelKey: 'nav.extract', icon: IconExtract },
       { path: '/search', labelKey: 'nav.search', icon: IconSearch },
-      { path: '/batch', labelKey: 'nav.batch', icon: IconBatch }
-    ]
-  },
-  {
-    id: 'tools',
-    labelKey: 'nav.sections.tools',
-    items: [
-      { path: '/mcp-tools', labelKey: 'nav.mcpTools', icon: IconMcp },
-      { path: '/engines', labelKey: 'nav.engines', icon: IconEngine },
-      { path: '/plugins', labelKey: 'nav.plugins', icon: IconPlugin }
-    ]
-  },
-  {
-    id: 'monitoring',
-    labelKey: 'nav.sections.monitoring',
-    items: [
-      { path: '/outbox', labelKey: 'nav.outbox', icon: IconOutbox },
-      { path: '/observability', labelKey: 'nav.observability', icon: IconStats },
-      { path: '/reconciliation', labelKey: 'nav.reconciliation', icon: IconReconcile },
-      { path: '/audit-logs', labelKey: 'nav.auditLogs', icon: IconAudit }
-    ]
-  },
-  {
-    id: 'advanced',
-    labelKey: 'nav.sections.advanced',
-    items: [
-      { path: '/pipeline/doc-1', labelKey: 'nav.pipeline', icon: IconPipeline },
-      { path: '/rbac', labelKey: 'nav.rbac', icon: IconShield },
-      { path: '/vector-routes', labelKey: 'nav.vectorRoutes', icon: IconRoute }
+      { path: '/batch', labelKey: 'nav.batch', icon: IconBatch },
+      { path: '/mcp-tools', labelKey: 'nav.mcpTools', icon: IconMcp }
     ]
   },
   {
@@ -92,20 +59,9 @@ const navSections: NavSection[] = [
   }
 ]
 
-const isHealthy = ref(false)
 const isCollapsed = ref(false)
 const currentLanguage = ref(getLanguage())
 const currentTheme = ref(getTheme())
-let healthTimer: ReturnType<typeof setInterval> | null = null
-
-const checkHealth = async () => {
-  try {
-    const response = await fetch('/api/v1/x2text/health', { signal: AbortSignal.timeout(2000) })
-    isHealthy.value = response.ok
-  } catch {
-    isHealthy.value = false
-  }
-}
 
 const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value
@@ -135,12 +91,6 @@ onMounted(() => {
   if (savedCollapsed !== null) {
     isCollapsed.value = savedCollapsed === 'true'
   }
-  checkHealth()
-  healthTimer = setInterval(checkHealth, 30000)
-})
-
-onUnmounted(() => {
-  if (healthTimer) clearInterval(healthTimer)
 })
 </script>
 
@@ -149,7 +99,6 @@ onUnmounted(() => {
     class="bg-surface border-r border-border flex flex-col transition-all duration-300"
     :class="isCollapsed ? 'w-16' : 'w-64'"
   >
-    <!-- Logo Section -->
     <div class="p-lg border-b border-border">
       <div class="flex items-center gap-sm">
         <div class="w-8 h-8 rounded bg-primary flex items-center justify-center flex-shrink-0">
@@ -162,7 +111,6 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Collapse Toggle -->
     <button
       @click="toggleCollapse"
       class="absolute top-lg right-0 transform translate-x-1/2 w-6 h-6 bg-surface border border-border rounded-full flex items-center justify-center hover:bg-surface-hover transition-colors z-10"
@@ -173,7 +121,6 @@ onUnmounted(() => {
       />
     </button>
 
-    <!-- Navigation Sections -->
     <nav class="flex-1 overflow-y-auto p-md">
       <div v-for="section in navSections" :key="section.id" class="mb-xl">
         <div
@@ -214,7 +161,6 @@ onUnmounted(() => {
       </div>
     </nav>
 
-    <!-- Bottom Section -->
     <div class="border-t border-border">
       <div v-if="!isCollapsed" class="p-md space-y-md">
         <div class="flex items-center justify-between">
@@ -253,18 +199,6 @@ onUnmounted(() => {
           <IconMoon v-else class="w-4 h-4 text-text-muted" />
         </button>
       </div>
-
-      <div class="p-lg border-t border-border">
-        <div class="flex items-center gap-sm" :class="isCollapsed ? 'justify-center' : ''">
-          <div
-            class="w-2 h-2 rounded-full flex-shrink-0 transition-colors duration-300"
-            :class="isHealthy ? 'bg-success animate-pulse' : 'bg-error'"
-          ></div>
-          <span v-if="!isCollapsed" class="text-micro text-text-muted">
-            {{ isHealthy ? t('status.apiConnected') : t('status.apiOffline') }}
-          </span>
-        </div>
-      </div>
     </div>
   </aside>
 </template>
@@ -272,14 +206,5 @@ onUnmounted(() => {
 <style scoped>
 aside {
   position: relative;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-.animate-pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 </style>
