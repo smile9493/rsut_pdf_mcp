@@ -37,4 +37,7 @@ pub use error::{PdfiumGuardError, PdfiumGuardResult, VlmError, VlmResult};
 pub use gateway::{render_page_pixels, VlmGateway, VlmGatewayHandle};
 pub use metrics::{MetricsCollector, RequestTimer};
 pub use pdfium_guard::{catch_pdfium, PdfiumGuard};
-pub use types::{LayoutResult, PageComplexity, PayloadMetadata, PdfiumExtraction, Region, RegionType, VlmConfig, VlmModel};
+pub use types::{
+    LayoutResult, PageComplexity, PayloadMetadata, PdfiumExtraction, Region, RegionType, VlmConfig,
+    VlmModel,
+};

@@ -20,6 +20,6 @@ pub mod validator;
 pub mod vlm_pipeline;
 pub mod wiki;
 
+pub use config::ServerConfig;
 pub use extractor::McpPdfPipeline;
 pub use validator::{FileValidator, PathValidationConfig};
-pub use config::ServerConfig;

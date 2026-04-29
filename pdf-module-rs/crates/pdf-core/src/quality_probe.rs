@@ -97,7 +97,7 @@ impl QualityProbe {
         let text_density = text_chars as f64 / sample_size as f64;
 
         let sample_str = String::from_utf8_lossy(sample);
-        let has_fonts = sample_str.contains("/Font") 
+        let has_fonts = sample_str.contains("/Font")
             || sample_str.contains("/Type0")
             || sample_str.contains("/CIDFont");
 
@@ -189,10 +189,10 @@ mod tests {
     fn test_quality_probe_invalid() {
         let mut temp_file = NamedTempFile::new().unwrap();
         temp_file.write_all(b"Not a PDF").unwrap();
-        
+
         let data = std::fs::read(temp_file.path()).unwrap();
         let report = QualityProbe::analyze(&data).unwrap();
-        
+
         assert_eq!(report.quality, PdfQuality::Invalid);
         assert!(!report.needs_vlm);
     }
@@ -200,11 +200,13 @@ mod tests {
     #[test]
     fn test_quality_probe_pdf_header() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b"%PDF-1.4\n%test content with /Font and /Image").unwrap();
-        
+        temp_file
+            .write_all(b"%PDF-1.4\n%test content with /Font and /Image")
+            .unwrap();
+
         let data = std::fs::read(temp_file.path()).unwrap();
         let report = QualityProbe::analyze(&data).unwrap();
-        
+
         assert_ne!(report.quality, PdfQuality::Invalid);
         assert!(report.has_fonts);
         assert!(report.has_images);

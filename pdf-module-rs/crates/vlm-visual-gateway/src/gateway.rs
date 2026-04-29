@@ -271,9 +271,7 @@ impl VlmGateway {
             | VlmError::Unavailable(_)
             | VlmError::Network(_)
             | VlmError::Timeout(_) => true,
-            VlmError::ParseError(_)
-            | VlmError::InvalidImage(_)
-            | VlmError::Config(_) => false,
+            VlmError::ParseError(_) | VlmError::InvalidImage(_) | VlmError::Config(_) => false,
         }
     }
 
@@ -297,10 +295,9 @@ impl VlmGateway {
     }
 
     async fn send_chat_request(&self, payload: &VlmPayload) -> VlmResult<String> {
-        let enable_thinking = self.config.enable_thinking
-            && self.config.model.supports_thinking();
-        let enable_function_call = self.config.enable_function_call
-            && self.config.model.supports_function_call();
+        let enable_thinking = self.config.enable_thinking && self.config.model.supports_thinking();
+        let enable_function_call =
+            self.config.enable_function_call && self.config.model.supports_function_call();
 
         let chat_request = payload.to_chat_request(
             "Analyze this PDF page and identify all layout regions. \
@@ -430,8 +427,11 @@ impl VlmGateway {
 
         for page_items in &ocr_response.layout_details {
             for item in page_items {
-                if item.label == "text" || item.label == "title" || item.label == "caption"
-                    || item.label == "table" || item.label == "list"
+                if item.label == "text"
+                    || item.label == "title"
+                    || item.label == "caption"
+                    || item.label == "table"
+                    || item.label == "list"
                 {
                     if let Some(ref content) = item.content {
                         total_text.push_str(content);
@@ -496,8 +496,7 @@ impl VlmGateway {
 
         let coord_regex = regex::Regex::new(r"\[\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\]").ok();
         let region_type_regex =
-            regex::Regex::new(r"(?i)(title|body|table|image|caption|paragraph|heading)")
-                .ok();
+            regex::Regex::new(r"(?i)(title|body|table|image|caption|paragraph|heading)").ok();
 
         for cap in coord_regex
             .as_ref()

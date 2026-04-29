@@ -1,6 +1,6 @@
-use std::path::{Path, PathBuf};
 use std::fs::{self, File};
 use std::io::Write as IoWrite;
+use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -32,13 +32,16 @@ pub struct WikiStorage {
 impl WikiStorage {
     pub fn new(base_path: impl AsRef<Path>) -> PdfResult<Self> {
         let base_path = base_path.as_ref().to_path_buf();
-        
-        fs::create_dir_all(base_path.join("raw"))
-            .map_err(|e| PdfModuleError::StorageError(format!("Failed to create raw dir: {}", e)))?;
-        fs::create_dir_all(base_path.join("wiki"))
-            .map_err(|e| PdfModuleError::StorageError(format!("Failed to create wiki dir: {}", e)))?;
-        fs::create_dir_all(base_path.join("scheme"))
-            .map_err(|e| PdfModuleError::StorageError(format!("Failed to create scheme dir: {}", e)))?;
+
+        fs::create_dir_all(base_path.join("raw")).map_err(|e| {
+            PdfModuleError::StorageError(format!("Failed to create raw dir: {}", e))
+        })?;
+        fs::create_dir_all(base_path.join("wiki")).map_err(|e| {
+            PdfModuleError::StorageError(format!("Failed to create wiki dir: {}", e))
+        })?;
+        fs::create_dir_all(base_path.join("scheme")).map_err(|e| {
+            PdfModuleError::StorageError(format!("Failed to create scheme dir: {}", e))
+        })?;
 
         Ok(Self { base_path })
     }
@@ -73,11 +76,13 @@ impl WikiStorage {
 
         let full_content = format!("---\n{}---\n\n{}", yaml_frontmatter, raw_doc.content);
 
-        let mut file = File::create(&raw_path)
-            .map_err(|e| PdfModuleError::StorageError(format!("Failed to create raw file: {}", e)))?;
-        
-        file.write_all(full_content.as_bytes())
-            .map_err(|e| PdfModuleError::StorageError(format!("Failed to write raw file: {}", e)))?;
+        let mut file = File::create(&raw_path).map_err(|e| {
+            PdfModuleError::StorageError(format!("Failed to create raw file: {}", e))
+        })?;
+
+        file.write_all(full_content.as_bytes()).map_err(|e| {
+            PdfModuleError::StorageError(format!("Failed to write raw file: {}", e))
+        })?;
 
         Ok(raw_path)
     }
@@ -92,13 +97,15 @@ impl WikiStorage {
 
         if raw_dir.exists() {
             let entries: Vec<_> = fs::read_dir(&raw_dir)
-                .map_err(|e| PdfModuleError::StorageError(format!("Failed to read raw dir: {}", e)))?
+                .map_err(|e| {
+                    PdfModuleError::StorageError(format!("Failed to read raw dir: {}", e))
+                })?
                 .filter_map(|e| e.ok())
                 .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
                 .collect();
 
             let count = entries.len();
-            
+
             for entry in &entries {
                 let filename = entry.file_name().to_string_lossy().to_string();
                 map_content.push_str(&format!("- [{}](raw/{})\n", filename, filename));
@@ -109,7 +116,7 @@ impl WikiStorage {
 
         let mut file = File::create(&map_path)
             .map_err(|e| PdfModuleError::StorageError(format!("Failed to create MAP.md: {}", e)))?;
-        
+
         file.write_all(map_content.as_bytes())
             .map_err(|e| PdfModuleError::StorageError(format!("Failed to write MAP.md: {}", e)))?;
 
@@ -151,7 +158,7 @@ impl AgentPayload {
         extraction_method: &str,
     ) -> Self {
         let file_hash = WikiStorage::compute_file_hash(&extraction_result.extracted_text);
-        
+
         let metadata = RawMetadata {
             source_file: source_file.to_string_lossy().to_string(),
             file_hash,
@@ -226,10 +233,13 @@ See below for the full extraction with YAML frontmatter.
     }
 
     pub fn to_markdown(&self) -> String {
-        let yaml_frontmatter = serde_yaml::to_string(&self.metadata)
-            .unwrap_or_else(|_| "metadata: error".to_string());
+        let yaml_frontmatter =
+            serde_yaml::to_string(&self.metadata).unwrap_or_else(|_| "metadata: error".to_string());
 
-        format!("---\n{}---\n\n{}\n\n{}", yaml_frontmatter, self.prompt, self.content)
+        format!(
+            "---\n{}---\n\n{}\n\n{}",
+            yaml_frontmatter, self.prompt, self.content
+        )
     }
 }
 
@@ -242,7 +252,7 @@ mod tests {
     fn test_wiki_storage_creation() {
         let temp_dir = TempDir::new().unwrap();
         let storage = WikiStorage::new(temp_dir.path()).unwrap();
-        
+
         assert!(storage.raw_path().exists());
         assert!(storage.wiki_path().exists());
         assert!(storage.scheme_path().exists());

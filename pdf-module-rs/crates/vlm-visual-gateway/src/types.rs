@@ -341,17 +341,12 @@ impl VlmPayload {
 
         let mut text = String::new();
         if let Some(ref hint) = self.hint {
-            text.push_str(&format!(
-                "Extracted text from the page: {}\n\n",
-                hint
-            ));
+            text.push_str(&format!("Extracted text from the page: {}\n\n", hint));
         }
         text.push_str(system_prompt);
         text.push_str(&format!(
             "\n\nPage {} dimensions: {:.0} x {:.0} points",
-            self.metadata.page_number,
-            self.metadata.page_width,
-            self.metadata.page_height
+            self.metadata.page_number, self.metadata.page_width, self.metadata.page_height
         ));
 
         content.push(ChatMessageContentPart::Text { text });

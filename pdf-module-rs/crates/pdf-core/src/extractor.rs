@@ -26,20 +26,21 @@ pub struct ExtractionContext {
 impl McpPdfPipeline {
     pub fn new(config: &ServerConfig) -> PdfResult<Self> {
         let metrics = Arc::new(MetricsCollector::with_default_registry());
-        
+
         let vlm_gateway = match VlmConfig::from_env() {
-            Ok(vlm_config) => {
-                match VlmGateway::new(vlm_config, Arc::clone(&metrics)) {
-                    Ok(gateway) => {
-                        info!("VLM gateway initialized successfully");
-                        Some(gateway)
-                    }
-                    Err(e) => {
-                        warn!("Failed to initialize VLM gateway: {} - operating in local-only mode", e);
-                        None
-                    }
+            Ok(vlm_config) => match VlmGateway::new(vlm_config, Arc::clone(&metrics)) {
+                Ok(gateway) => {
+                    info!("VLM gateway initialized successfully");
+                    Some(gateway)
                 }
-            }
+                Err(e) => {
+                    warn!(
+                        "Failed to initialize VLM gateway: {} - operating in local-only mode",
+                        e
+                    );
+                    None
+                }
+            },
             Err(_) => {
                 info!("VLM not configured - operating in local-only mode");
                 None
@@ -55,8 +56,9 @@ impl McpPdfPipeline {
 
     pub fn with_vlm(config: &ServerConfig, vlm_config: VlmConfig) -> PdfResult<Self> {
         let metrics = Arc::new(MetricsCollector::with_default_registry());
-        let vlm_gateway = VlmGateway::new(vlm_config, Arc::clone(&metrics))
-            .map_err(|e| crate::error::PdfModuleError::ConfigError(format!("VLM gateway: {}", e)))?;
+        let vlm_gateway = VlmGateway::new(vlm_config, Arc::clone(&metrics)).map_err(|e| {
+            crate::error::PdfModuleError::ConfigError(format!("VLM gateway: {}", e))
+        })?;
 
         Ok(Self {
             validator: FileValidator::new(config.security.max_file_size_mb as u32),
@@ -69,7 +71,7 @@ impl McpPdfPipeline {
         self.validator.validate(file_path)?;
         let loader = MmapPdfLoader::load(file_path)?;
         let quality_report = QualityProbe::probe_with_pdfium(loader.as_bytes())?;
-        
+
         info!(
             file = ?file_path,
             quality = ?quality_report.quality,
@@ -87,7 +89,7 @@ impl McpPdfPipeline {
 
     pub async fn extract_text(&self, file_path: &Path) -> PdfResult<TextExtractionResult> {
         let ctx = self.probe_and_load(file_path)?;
-        
+
         match ctx.quality_report.extraction_method {
             ExtractionMethod::Pdfium => {
                 let text = PdfiumEngine::extract_text_from_mmap(&ctx.loader)?;
@@ -123,7 +125,7 @@ impl McpPdfPipeline {
         _options: &ExtractOptions,
     ) -> PdfResult<StructuredExtractionResult> {
         let ctx = self.probe_and_load(file_path)?;
-        
+
         match ctx.quality_report.extraction_method {
             ExtractionMethod::Pdfium => {
                 PdfiumEngine::extract_structured_from_mmap(&ctx.loader, file_path)

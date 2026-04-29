@@ -136,7 +136,13 @@ impl VlmEnhancedPipeline {
             let layout_confidence = self.estimate_layout_confidence(page);
             let complexity = Self::assess_page_complexity(text_len, layout_confidence);
 
-            let model = if self.gateway.as_ref().unwrap().config().enable_multi_model_routing {
+            let model = if self
+                .gateway
+                .as_ref()
+                .unwrap()
+                .config()
+                .enable_multi_model_routing
+            {
                 VlmModel::select_for_complexity(complexity)
             } else {
                 self.gateway.as_ref().unwrap().config().model

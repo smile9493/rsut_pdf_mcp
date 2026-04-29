@@ -1,4 +1,8 @@
-use pdf_core::{dto::*, wiki::{AgentPayload, WikiStorage}, McpPdfPipeline, PathValidationConfig};
+use pdf_core::{
+    dto::*,
+    wiki::{AgentPayload, WikiStorage},
+    McpPdfPipeline, PathValidationConfig,
+};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -58,25 +62,31 @@ impl ToolStats {
 
     pub fn record_success(&self, tool: &str, latency_ms: u64) {
         self.total_calls.fetch_add(1, Ordering::Relaxed);
-        self.total_latency_ms.fetch_add(latency_ms, Ordering::Relaxed);
+        self.total_latency_ms
+            .fetch_add(latency_ms, Ordering::Relaxed);
         self.files_processed.fetch_add(1, Ordering::Relaxed);
 
         match tool {
             "extract_text" => {
                 self.extract_text_calls.fetch_add(1, Ordering::Relaxed);
-                self.extract_text_latency.fetch_add(latency_ms, Ordering::Relaxed);
+                self.extract_text_latency
+                    .fetch_add(latency_ms, Ordering::Relaxed);
             }
             "extract_structured" => {
-                self.extract_structured_calls.fetch_add(1, Ordering::Relaxed);
-                self.extract_structured_latency.fetch_add(latency_ms, Ordering::Relaxed);
+                self.extract_structured_calls
+                    .fetch_add(1, Ordering::Relaxed);
+                self.extract_structured_latency
+                    .fetch_add(latency_ms, Ordering::Relaxed);
             }
             "get_page_count" => {
                 self.get_page_count_calls.fetch_add(1, Ordering::Relaxed);
-                self.get_page_count_latency.fetch_add(latency_ms, Ordering::Relaxed);
+                self.get_page_count_latency
+                    .fetch_add(latency_ms, Ordering::Relaxed);
             }
             "search_keywords" => {
                 self.search_keywords_calls.fetch_add(1, Ordering::Relaxed);
-                self.search_keywords_latency.fetch_add(latency_ms, Ordering::Relaxed);
+                self.search_keywords_latency
+                    .fetch_add(latency_ms, Ordering::Relaxed);
             }
             _ => {}
         }
@@ -92,8 +102,10 @@ impl ToolStats {
                 self.extract_text_errors.fetch_add(1, Ordering::Relaxed);
             }
             "extract_structured" => {
-                self.extract_structured_calls.fetch_add(1, Ordering::Relaxed);
-                self.extract_structured_errors.fetch_add(1, Ordering::Relaxed);
+                self.extract_structured_calls
+                    .fetch_add(1, Ordering::Relaxed);
+                self.extract_structured_errors
+                    .fetch_add(1, Ordering::Relaxed);
             }
             "get_page_count" => {
                 self.get_page_count_calls.fetch_add(1, Ordering::Relaxed);
@@ -301,7 +313,8 @@ fn handle_tools_list(request: &JsonRpcRequest) -> JsonRpcResponse {
         },
         ToolDefinition {
             name: "extrude_to_server_wiki".to_string(),
-            description: "Extract PDF and save to server-side wiki with automatic indexing".to_string(),
+            description: "Extract PDF and save to server-side wiki with automatic indexing"
+                .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -319,7 +332,9 @@ fn handle_tools_list(request: &JsonRpcRequest) -> JsonRpcResponse {
         },
         ToolDefinition {
             name: "extrude_to_agent_payload".to_string(),
-            description: "Extract PDF and return markdown payload with prompt for local wiki creation".to_string(),
+            description:
+                "Extract PDF and return markdown payload with prompt for local wiki creation"
+                    .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -678,7 +693,9 @@ async fn handle_extrude_to_server_wiki(
         "message": format!("PDF extracted and saved to wiki at {:?}", wiki_base_path)
     });
 
-    Ok(vec![Content::text(serde_json::to_string_pretty(&response)?)])
+    Ok(vec![Content::text(serde_json::to_string_pretty(
+        &response,
+    )?)])
 }
 
 async fn handle_extrude_to_agent_payload(
