@@ -238,6 +238,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           name: Release ${{ steps.version.outputs.VERSION }}
           body: |
             ## PDF Module MCP Server ${{ steps.version.outputs.VERSION }}
