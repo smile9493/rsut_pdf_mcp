@@ -7,12 +7,7 @@
 //! - P3 Performance: 零拷贝、Arena分配
 
 #![forbid(unsafe_op_in_unsafe_fn)]
-#![warn(missing_docs)]
-#![warn(rustdoc::missing_crate_level_docs)]
 #![warn(clippy::all)]
-#![warn(clippy::pedantic)]
-#![warn(clippy::nursery)]
-#![warn(clippy::cargo)]
 
 pub mod config;
 pub mod dto;

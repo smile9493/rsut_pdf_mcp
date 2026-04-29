@@ -198,11 +198,7 @@ async fn metrics(State(state): State<AppState>) -> Json<DashboardMetrics> {
         + stats.get_page_count_errors.load(Ordering::Relaxed)
         + stats.search_keywords_errors.load(Ordering::Relaxed);
 
-    let avg_latency = if total_calls > 0 {
-        total_latency / total_calls
-    } else {
-        0
-    };
+    let avg_latency = total_latency.checked_div(total_calls).unwrap_or(0);
 
     let success_rate = if total_calls > 0 {
         ((total_calls - total_errors) as f64 / total_calls as f64) * 100.0
@@ -218,7 +214,7 @@ async fn metrics(State(state): State<AppState>) -> Json<DashboardMetrics> {
         latency: u64,
         errors: u64,
     ) -> ToolStat {
-        let avg = if calls > 0 { latency / calls } else { 0 };
+        let avg = latency.checked_div(calls).unwrap_or(0);
         let rate = if calls > 0 {
             ((calls - errors) as f64 / calls as f64) * 100.0
         } else {
@@ -338,7 +334,7 @@ fn read_memory_usage() -> Option<f64> {
 
         let file = File::open("/proc/self/status").ok()?;
         let reader = BufReader::new(file);
-        for line in reader.lines().flatten() {
+        for line in reader.lines().map_while(Result::ok) {
             if line.starts_with("VmRSS:") {
                 let parts: Vec<&str> = line.split_whitespace().collect();
                 if parts.len() >= 2 {
@@ -360,7 +356,7 @@ fn total_memory_kb() -> Option<u64> {
 
     let file = File::open("/proc/meminfo").ok()?;
     let reader = BufReader::new(file);
-    for line in reader.lines().flatten() {
+    for line in reader.lines().map_while(Result::ok) {
         if line.starts_with("MemTotal:") {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 2 {

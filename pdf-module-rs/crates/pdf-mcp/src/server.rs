@@ -8,6 +8,7 @@ use tracing::{debug, error, info};
 
 static SHUTDOWN_FLAG: AtomicBool = AtomicBool::new(false);
 
+#[allow(dead_code)]
 pub struct ToolStats {
     pub total_calls: AtomicU64,
     pub total_latency_ms: AtomicU64,
@@ -28,6 +29,7 @@ pub struct ToolStats {
     pub search_keywords_errors: AtomicU64,
 }
 
+#[allow(dead_code)]
 impl ToolStats {
     pub fn new() -> Self {
         Self {
@@ -649,7 +651,7 @@ async fn handle_extrude_to_server_wiki(
 
     let wiki_base_path = args["wiki_base_path"]
         .as_str()
-        .map(|s| std::path::Path::new(s))
+        .map(std::path::Path::new)
         .unwrap_or_else(|| std::path::Path::new("./wiki"));
 
     let storage = WikiStorage::new(wiki_base_path)

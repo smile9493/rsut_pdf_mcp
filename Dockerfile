@@ -1,52 +1,50 @@
-# Development Dockerfile - 从源码构建
-FROM rust:bookworm as builder
+FROM node:20-bookworm AS frontend-builder
+
+WORKDIR /app/web
+
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+
+COPY web/ ./
+RUN npm run build
+
+FROM rust:bookworm AS backend-builder
 
 WORKDIR /app
 
-# 安装构建依赖
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 复制源码
-COPY pdf-module-rs/Cargo.toml Cargo.toml
-COPY pdf-module-rs/Cargo.lock Cargo.lock
+COPY pdf-module-rs/Cargo.toml pdf-module-rs/Cargo.lock ./
 COPY pdf-module-rs/crates ./crates
+COPY pdf-module-rs/.cargo ./.cargo
 
-# 构建项目
-RUN cargo build --release
+RUN cargo build --release --bin pdf-mcp --bin pdf-dashboard
 
-# Runtime stage
 FROM debian:bookworm-slim
 
-# 安装运行时依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl3 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 创建非 root 用户
 RUN useradd -m -u 1000 pdfuser
 
-# 设置工作目录
 WORKDIR /app
 
-# 从构建阶段复制二进制文件
-COPY --from=builder /app/target/release/pdf-mcp /usr/local/bin/pdf-mcp
+COPY --from=backend-builder /app/target/release/pdf-mcp /usr/local/bin/pdf-mcp
+COPY --from=backend-builder /app/target/release/pdf-dashboard /usr/local/bin/pdf-dashboard
+COPY --from=frontend-builder /app/web/dist /app/web/dist
 
-# 设置权限
-RUN chmod +x /usr/local/bin/pdf-mcp
-
-# 创建必要目录
-RUN mkdir -p /app/data /app/logs/audit /app/cache && \
+RUN chmod +x /usr/local/bin/pdf-mcp /usr/local/bin/pdf-dashboard && \
+    mkdir -p /app/data /app/logs/audit /app/cache && \
     chown -R pdfuser:pdfuser /app
 
-# 切换到非 root 用户
 USER pdfuser
 
-# 环境变量
 ENV RUST_LOG=info
 ENV STORAGE_TYPE=local
 ENV STORAGE_LOCAL_DIR=/app/data
@@ -55,9 +53,9 @@ ENV CACHE_MAX_SIZE=1000
 ENV AUDIT_ENABLED=true
 ENV AUDIT_LOG_DIR=/app/logs/audit
 ENV MAX_FILE_SIZE_MB=100
+ENV DASHBOARD_WEB_DIR=/app/web/dist
+ENV DASHBOARD_PORT=8000
 
-# 暴露端口 (MCP SSE)
-EXPOSE 8001
+EXPOSE 8000 8001
 
-# 默认启动 MCP 服务 (stdio)
-CMD ["pdf-mcp"]
+CMD ["pdf-dashboard"]

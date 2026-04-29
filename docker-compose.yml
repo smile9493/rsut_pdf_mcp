@@ -2,24 +2,27 @@ version: '3.8'
 
 services:
   pdf-mcp:
+    image: smile9493/pdf-mcp:0.1.1
     build:
       context: .
       dockerfile: Dockerfile
     container_name: pdf-mcp-server
     ports:
+      - "8000:8000"
       - "8001:8001"
     environment:
       - RUST_LOG=info
       - STORAGE_TYPE=local
       - STORAGE_LOCAL_DIR=/app/data
       - MAX_FILE_SIZE_MB=100
+      - DASHBOARD_WEB_DIR=/app/web/dist
+      - DASHBOARD_PORT=8000
     volumes:
       - pdf_data:/app/data
     restart: unless-stopped
     networks:
       - pdf-network
 
-  # Optional: Redis for caching
   redis:
     image: redis:7-alpine
     container_name: pdf-redis
