@@ -7,6 +7,7 @@ use crate::dto::{
 };
 use crate::engine::PdfEngine;
 use crate::error::{PdfModuleError, PdfResult};
+use crate::mmap_loader::MmapPdfLoader;
 
 pub struct PdfiumEngine;
 
@@ -19,6 +20,32 @@ struct StructuredParts {
 impl PdfiumEngine {
     pub fn new() -> PdfResult<Self> {
         Ok(Self)
+    }
+
+    pub fn extract_text_from_mmap(loader: &MmapPdfLoader) -> PdfResult<String> {
+        let data = loader.as_bytes();
+        Self::safe_extract_text(data)
+    }
+
+    pub fn extract_structured_from_mmap(
+        loader: &MmapPdfLoader,
+        file_path: &Path,
+    ) -> PdfResult<StructuredExtractionResult> {
+        let data = loader.as_bytes();
+        let parts = Self::safe_extract_structured_parts(data)?;
+        let file_info = FileInfo::from_path(file_path)?;
+        Ok(StructuredExtractionResult {
+            extracted_text: parts.extracted_text,
+            page_count: parts.page_count,
+            pages: parts.pages,
+            extraction_metadata: None,
+            file_info,
+        })
+    }
+
+    pub fn get_page_count_from_mmap(loader: &MmapPdfLoader) -> PdfResult<u32> {
+        let data = loader.as_bytes();
+        Self::safe_get_page_count(data)
     }
 
     pub fn safe_extract_text(data: &[u8]) -> PdfResult<String> {

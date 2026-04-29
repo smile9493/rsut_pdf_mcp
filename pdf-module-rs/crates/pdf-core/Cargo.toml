@@ -23,6 +23,10 @@ chrono = { workspace = true }
 futures = { workspace = true }
 vlm-visual-gateway = { path = "../vlm-visual-gateway" }
 prometheus = { version = "0.13" }
+memmap2 = { workspace = true }
+bumpalo = { workspace = true }
+sha2 = { workspace = true }
+once_cell = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.10"

@@ -1,8 +1,131 @@
-use pdf_core::{dto::*, McpPdfPipeline, PathValidationConfig};
+use pdf_core::{dto::*, wiki::{AgentPayload, WikiStorage}, McpPdfPipeline, PathValidationConfig};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Write};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use tokio::signal;
 use tracing::{debug, error, info};
+
+static SHUTDOWN_FLAG: AtomicBool = AtomicBool::new(false);
+
+pub struct ToolStats {
+    pub total_calls: AtomicU64,
+    pub total_latency_ms: AtomicU64,
+    pub total_errors: AtomicU64,
+    pub files_processed: AtomicU64,
+    pub start_time: u64,
+    pub extract_text_calls: AtomicU64,
+    pub extract_text_latency: AtomicU64,
+    pub extract_text_errors: AtomicU64,
+    pub extract_structured_calls: AtomicU64,
+    pub extract_structured_latency: AtomicU64,
+    pub extract_structured_errors: AtomicU64,
+    pub get_page_count_calls: AtomicU64,
+    pub get_page_count_latency: AtomicU64,
+    pub get_page_count_errors: AtomicU64,
+    pub search_keywords_calls: AtomicU64,
+    pub search_keywords_latency: AtomicU64,
+    pub search_keywords_errors: AtomicU64,
+}
+
+impl ToolStats {
+    pub fn new() -> Self {
+        Self {
+            total_calls: AtomicU64::new(0),
+            total_latency_ms: AtomicU64::new(0),
+            total_errors: AtomicU64::new(0),
+            files_processed: AtomicU64::new(0),
+            start_time: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            extract_text_calls: AtomicU64::new(0),
+            extract_text_latency: AtomicU64::new(0),
+            extract_text_errors: AtomicU64::new(0),
+            extract_structured_calls: AtomicU64::new(0),
+            extract_structured_latency: AtomicU64::new(0),
+            extract_structured_errors: AtomicU64::new(0),
+            get_page_count_calls: AtomicU64::new(0),
+            get_page_count_latency: AtomicU64::new(0),
+            get_page_count_errors: AtomicU64::new(0),
+            search_keywords_calls: AtomicU64::new(0),
+            search_keywords_latency: AtomicU64::new(0),
+            search_keywords_errors: AtomicU64::new(0),
+        }
+    }
+
+    pub fn record_success(&self, tool: &str, latency_ms: u64) {
+        self.total_calls.fetch_add(1, Ordering::Relaxed);
+        self.total_latency_ms.fetch_add(latency_ms, Ordering::Relaxed);
+        self.files_processed.fetch_add(1, Ordering::Relaxed);
+
+        match tool {
+            "extract_text" => {
+                self.extract_text_calls.fetch_add(1, Ordering::Relaxed);
+                self.extract_text_latency.fetch_add(latency_ms, Ordering::Relaxed);
+            }
+            "extract_structured" => {
+                self.extract_structured_calls.fetch_add(1, Ordering::Relaxed);
+                self.extract_structured_latency.fetch_add(latency_ms, Ordering::Relaxed);
+            }
+            "get_page_count" => {
+                self.get_page_count_calls.fetch_add(1, Ordering::Relaxed);
+                self.get_page_count_latency.fetch_add(latency_ms, Ordering::Relaxed);
+            }
+            "search_keywords" => {
+                self.search_keywords_calls.fetch_add(1, Ordering::Relaxed);
+                self.search_keywords_latency.fetch_add(latency_ms, Ordering::Relaxed);
+            }
+            _ => {}
+        }
+    }
+
+    pub fn record_error(&self, tool: &str) {
+        self.total_calls.fetch_add(1, Ordering::Relaxed);
+        self.total_errors.fetch_add(1, Ordering::Relaxed);
+
+        match tool {
+            "extract_text" => {
+                self.extract_text_calls.fetch_add(1, Ordering::Relaxed);
+                self.extract_text_errors.fetch_add(1, Ordering::Relaxed);
+            }
+            "extract_structured" => {
+                self.extract_structured_calls.fetch_add(1, Ordering::Relaxed);
+                self.extract_structured_errors.fetch_add(1, Ordering::Relaxed);
+            }
+            "get_page_count" => {
+                self.get_page_count_calls.fetch_add(1, Ordering::Relaxed);
+                self.get_page_count_errors.fetch_add(1, Ordering::Relaxed);
+            }
+            "search_keywords" => {
+                self.search_keywords_calls.fetch_add(1, Ordering::Relaxed);
+                self.search_keywords_errors.fetch_add(1, Ordering::Relaxed);
+            }
+            _ => {}
+        }
+    }
+
+    pub fn total_calls(&self) -> u64 {
+        self.total_calls.load(Ordering::Relaxed)
+    }
+
+    pub fn avg_latency(&self) -> u64 {
+        let total = self.total_calls.load(Ordering::Relaxed);
+        if total == 0 {
+            return 0;
+        }
+        self.total_latency_ms.load(Ordering::Relaxed) / total
+    }
+
+    pub fn success_rate(&self) -> f64 {
+        let total = self.total_calls.load(Ordering::Relaxed);
+        if total == 0 {
+            return 100.0;
+        }
+        let errors = self.total_errors.load(Ordering::Relaxed);
+        ((total - errors) as f64 / total as f64) * 100.0
+    }
+}
 
 fn default_path_config() -> PathValidationConfig {
     PathValidationConfig {
@@ -15,11 +138,31 @@ fn default_path_config() -> PathValidationConfig {
 pub async fn run_stdio(pipeline: Arc<McpPdfPipeline>) -> anyhow::Result<()> {
     info!("MCP server listening on stdio");
 
+    let shutdown_notifier = Arc::new(AtomicBool::new(false));
+    let notifier_clone = Arc::clone(&shutdown_notifier);
+
+    tokio::spawn(async move {
+        match signal::ctrl_c().await {
+            Ok(()) => {
+                notifier_clone.store(true, Ordering::SeqCst);
+                info!("Received shutdown signal, finishing current request...");
+            }
+            Err(err) => {
+                error!("Unable to listen for shutdown signal: {}", err);
+            }
+        }
+    });
+
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let mut stdout_lock = stdout.lock();
 
     for line in stdin.lock().lines() {
+        if SHUTDOWN_FLAG.load(Ordering::SeqCst) || shutdown_notifier.load(Ordering::SeqCst) {
+            info!("Shutting down gracefully...");
+            break;
+        }
+
         let line = line?;
         debug!("Received: {}", line);
 
@@ -37,6 +180,8 @@ pub async fn run_stdio(pipeline: Arc<McpPdfPipeline>) -> anyhow::Result<()> {
         write_response(&mut stdout_lock, &response)?;
     }
 
+    SHUTDOWN_FLAG.store(true, Ordering::SeqCst);
+    info!("Server shut down gracefully");
     Ok(())
 }
 
@@ -152,6 +297,38 @@ fn handle_tools_list(request: &JsonRpcRequest) -> JsonRpcResponse {
                 "required": ["file_path", "keywords"]
             }),
         },
+        ToolDefinition {
+            name: "extrude_to_server_wiki".to_string(),
+            description: "Extract PDF and save to server-side wiki with automatic indexing".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "Absolute path to the PDF file"
+                    },
+                    "wiki_base_path": {
+                        "type": "string",
+                        "description": "Base directory for wiki storage (default: ./wiki)"
+                    }
+                },
+                "required": ["file_path"]
+            }),
+        },
+        ToolDefinition {
+            name: "extrude_to_agent_payload".to_string(),
+            description: "Extract PDF and return markdown payload with prompt for local wiki creation".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "Absolute path to the PDF file"
+                    }
+                },
+                "required": ["file_path"]
+            }),
+        },
     ];
 
     JsonRpcResponse::success(request.id.clone(), serde_json::json!({ "tools": tools }))
@@ -191,6 +368,8 @@ async fn handle_tools_call(
         "extract_structured" => handle_extract_structured(pipeline, &arguments).await,
         "get_page_count" => handle_get_page_count(pipeline, &arguments).await,
         "search_keywords" => handle_search_keywords(pipeline, &arguments).await,
+        "extrude_to_server_wiki" => handle_extrude_to_server_wiki(pipeline, &arguments).await,
+        "extrude_to_agent_payload" => handle_extrude_to_agent_payload(pipeline, &arguments).await,
         _ => {
             return JsonRpcResponse::error(
                 request.id.clone(),
@@ -454,4 +633,71 @@ impl Content {
             text,
         }
     }
+}
+
+async fn handle_extrude_to_server_wiki(
+    pipeline: &Arc<McpPdfPipeline>,
+    args: &serde_json::Value,
+) -> anyhow::Result<Vec<Content>> {
+    let file_path_str = args["file_path"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing file_path"))?;
+    let file_path = std::path::Path::new(file_path_str);
+
+    pdf_core::FileValidator::validate_path_safety(file_path, &default_path_config())
+        .map_err(|e| anyhow::anyhow!("Path validation failed: {}", e))?;
+
+    let wiki_base_path = args["wiki_base_path"]
+        .as_str()
+        .map(|s| std::path::Path::new(s))
+        .unwrap_or_else(|| std::path::Path::new("./wiki"));
+
+    let storage = WikiStorage::new(wiki_base_path)
+        .map_err(|e| anyhow::anyhow!("Failed to create wiki storage: {}", e))?;
+
+    let result = pipeline
+        .extract_structured(file_path, &ExtractOptions::default())
+        .await
+        .map_err(|e| anyhow::anyhow!("Extraction failed: {}", e))?;
+
+    let raw_path = storage
+        .save_raw(&result, file_path, 0.85, "pdfium")
+        .map_err(|e| anyhow::anyhow!("Failed to save raw document: {}", e))?;
+
+    let map_path = storage
+        .generate_map()
+        .map_err(|e| anyhow::anyhow!("Failed to generate MAP.md: {}", e))?;
+
+    let response = serde_json::json!({
+        "status": "success",
+        "raw_path": raw_path.to_string_lossy().to_string(),
+        "map_path": map_path.to_string_lossy().to_string(),
+        "page_count": result.page_count,
+        "message": format!("PDF extracted and saved to wiki at {:?}", wiki_base_path)
+    });
+
+    Ok(vec![Content::text(serde_json::to_string_pretty(&response)?)])
+}
+
+async fn handle_extrude_to_agent_payload(
+    pipeline: &Arc<McpPdfPipeline>,
+    args: &serde_json::Value,
+) -> anyhow::Result<Vec<Content>> {
+    let file_path_str = args["file_path"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing file_path"))?;
+    let file_path = std::path::Path::new(file_path_str);
+
+    pdf_core::FileValidator::validate_path_safety(file_path, &default_path_config())
+        .map_err(|e| anyhow::anyhow!("Path validation failed: {}", e))?;
+
+    let result = pipeline
+        .extract_structured(file_path, &ExtractOptions::default())
+        .await
+        .map_err(|e| anyhow::anyhow!("Extraction failed: {}", e))?;
+
+    let payload = AgentPayload::from_extraction(&result, file_path, 0.85, "pdfium");
+    let markdown = payload.to_markdown();
+
+    Ok(vec![Content::text(markdown)])
 }

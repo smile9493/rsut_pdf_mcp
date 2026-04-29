@@ -6,6 +6,7 @@ members = [
     "crates/pdf-core",
     "crates/pdf-mcp",
     "crates/vlm-visual-gateway",
+    "crates/pdf-dashboard",
 ]
 
 [workspace.dependencies]
@@ -24,6 +25,13 @@ toml = "0.8"
 serde_yaml = "0.9"
 infer = "0.16"
 chrono = { version = "0.4", features = ["serde"] }
+axum = "0.7"
+tower-http = { version = "0.5", features = ["cors"] }
+parking_lot = "0.12"
 pdf-common = { path = "crates/pdf-common" }
 pdf-macros = { path = "crates/pdf-macros" }
 pdf-core = { path = "crates/pdf-core" }
+memmap2 = "0.9"
+bumpalo = { version = "3.16", features = ["collections"] }
+sha2 = "0.10"
+once_cell = "1.19"

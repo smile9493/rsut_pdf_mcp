@@ -22,6 +22,8 @@ base64 = "0.22"
 prometheus = { version = "0.13", features = ["process"] }
 # UUID for trace_id generation
 uuid = { version = "1", features = ["v4"] }
+# Regex for parsing VLM text responses
+regex = "1"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros", "test-util"] }

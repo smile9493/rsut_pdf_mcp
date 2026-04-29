@@ -1,20 +1,30 @@
+//! PDF MCP Module - 宗师级PDF提取管道
+//!
+//! 遵循 Rust Coding Standards Skills v9.0.0 规范
+//! - P0 Safety: 内存安全、FFI隔离、错误处理
+//! - P1 Maintainability: 语义命名、代码组织
+//! - P2 Compile Time: 无过度泛型化
+//! - P3 Performance: 零拷贝、Arena分配
+
+#![forbid(unsafe_op_in_unsafe_fn)]
+#![warn(missing_docs)]
+#![warn(rustdoc::missing_crate_level_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+#![warn(clippy::cargo)]
+
 pub mod config;
 pub mod dto;
 pub mod engine;
 pub mod error;
 pub mod extractor;
+pub mod mmap_loader;
+pub mod quality_probe;
 pub mod validator;
 pub mod vlm_pipeline;
+pub mod wiki;
 
-pub use config::ServerConfig;
-pub use dto::*;
-pub use engine::{PdfEngine, PdfiumEngine};
-pub use error::{PdfModuleError, PdfResult};
 pub use extractor::McpPdfPipeline;
 pub use validator::{FileValidator, PathValidationConfig};
-pub use vlm_pipeline::{VlmEnhancedPipeline, VlmEnhancedResult, VlmPipelineConfig};
-
-pub use pdf_common;
-pub use pdf_common::PdfError as UnifiedPdfError;
-
-pub use vlm_visual_gateway;
+pub use config::ServerConfig;

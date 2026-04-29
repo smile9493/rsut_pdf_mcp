@@ -15,12 +15,7 @@ const getSavedLanguage = (): SupportedLocale => {
     return saved
   }
 
-  const browserLang = navigator.language
-  if (browserLang.startsWith('zh')) {
-    return 'zh'
-  }
-
-  return 'en'
+  return 'zh'
 }
 
 const i18n = createI18n({

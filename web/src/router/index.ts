@@ -25,6 +25,11 @@ const router = createRouter({
       component: () => import('@/views/McpToolsView.vue')
     },
     {
+      path: '/wiki',
+      name: 'wiki',
+      component: () => import('@/views/WikiView.vue')
+    },
+    {
       path: '/batch',
       name: 'batch',
       component: () => import('@/views/BatchProcessView.vue')

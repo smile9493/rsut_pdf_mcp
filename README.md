@@ -6,11 +6,31 @@
 [![CI](https://github.com/smile9493/rsut_pdf_mcp/actions/workflows/build.yml/badge.svg)](https://github.com/smile9493/rsut_pdf_mcp/actions)
 [![Release](https://img.shields.io/github/v/release/smile9493/rsut_pdf_mcp)](https://github.com/smile9493/rsut_pdf_mcp/releases)
 
-**极简 PDF 提取 MCP 管道** — 单一 pdfium 引擎、纯 stdio 传输、VLM 条件升级、Web 监控面板。
+** PDF 提取 MCP 管道** — 零拷贝mmap、智能质量探测、Wiki自动化、双模态工具集。
 
-基于**奥卡姆剃刀**与**截拳道**设计哲学，剔除所有非核心实体，收敛至最小可运行架构。
+基于**唯物辩证法与截拳道**工程哲学，将项目从臃肿的通用服务端重塑为极致精简、物理确定的 **AI Agent 专用感知器官**。
 
----
+***
+
+## 🎯 核心特性
+
+### ✨ 宗师级重构亮点
+
+- 🚀 **物理顺应**: mmap零拷贝 + Arena分配器，顺应OS Page Cache
+- 🧠 **智能感知**: 自动质量探测 + VLM热切换，扫描件自动识别
+- 📚 **Wiki自动化**: 三级存储结构 + 自动索引生成
+- 🔧 **双模态工具**: 服务端构建 + 本地投影两种模式
+
+### 🥋 截拳道工程哲学
+
+| 哲学原则     | 工程实现                 | 性能收益           |
+| -------- | -------------------- | -------------- |
+| **寸劲发力** | Arena分配器 $O(1)$ 批量销毁 | 微秒级内存回收        |
+| **截击之道** | FFI防波堤 + 质量探测拦截      | 防止C++ Segfault |
+| **物理顺应** | mmap零拷贝顺应Page Cache  | 零内存拷贝          |
+| **虚实结合** | Pdfium本地 + VLM云端     | 确定性 + 智能增强     |
+
+***
 
 ## 架构
 
@@ -18,25 +38,45 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                  AI Agent (Cursor/Claude Desktop)           │
 ──────────────────────────┬──────────────────────────────────┘
-                           │ JSON-RPC over stdio
-                           ▼
+                         │ JSON-RPC over stdio
+                         ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                     pdf-mcp (二进制客户端)                   │
 │  Windows: pdf-mcp.exe  │  Linux/macOS: pdf-mcp             │
 ├─────────────────────────────────────────────────────────────┤
-│  MCP Tools:                                                 │
-│  • extract_text        - 提取纯文本                         │
-│  • extract_structured  - 提取结构化数据 (per-page + bbox)   │
-│  • get_page_count      - 获取页数                           │
+│  MCP Tools (6个核心工具):                                    │
+│  • extract_text              - 提取纯文本                    │
+│  • extract_structured        - 提取结构化数据                │
+│  • get_page_count            - 获取页数                      │
+│  • search_keywords           - 关键词搜索                    │
+│  • extrude_to_server_wiki    - 服务端Wiki构建 ⭐ NEW         │
+│  • extrude_to_agent_payload  - 本地Wiki投影 ⭐ NEW           │
 └──────────────────────────┬──────────────────────────────────┘
-                           │
-        ──────────────────┴──────────────────┐
-        ▼                                      ▼
-┌───────────────────              ┌───────────────────┐
+                         │
+    ─────────────────────┴──────────────────┐
+    ▼                                        ▼
+┌───────────────────┐              ┌───────────────────┐
+│   MmapPdfLoader   │              │   QualityProbe    │
+│   零拷贝加载       │              │   智能质量探测     │
+│   物理顺应         │              │   扫描件识别       │
+└─────────┬─────────┘              └─────────┬─────────┘
+          │                                  │
+          ▼                                  ▼
+┌───────────────────┐              ┌───────────────────┐
 │   PdfiumEngine    │              │   VlmGateway      │
-│   (本地提取)       │              │   (条件升级)       │
+│   本地确定性提取    │              │   条件升级         │
 │   FFI 防波堤       │              │   GPT-4o/Claude   │
-───────────────────┘              └───────────────────┘
+└───────────────────┘              └───────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                   Wiki自动化系统 ⭐ NEW                      │
+├─────────────────────────────────────────────────────────────┤
+│  wiki/                                                       │
+│  ├── raw/           # 物理提取产物 (.raw.md + YAML元数据)    │
+│  ├── wiki/          # 精炼后的实体页面                       │
+│  ├── scheme/        # 强类型约束文件                         │
+│  └── MAP.md         # 全局语义地图 (自动生成)                │
+└─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
 │                   Web Dashboard (Vue 3)                     │
@@ -50,117 +90,23 @@
 └─────────────────────────────────────────────────────────────┘
 ```
 
----
+***
 
-## Web 界面预览
-
-### 首页 - 状态总览
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  📊 PDF Module Dashboard                                      │
-│  极简 PDF 提取 MCP 管道 - 单一引擎、纯 stdio、条件升级         │
-─────────────────────────────────────────────────────────────┤
-│  ┌──────────┐  ┌──────────┐  ┌──────────  ┌──────────┐    │
-│  │ MCP Tools│  │ Engine   │  │ Protocol │  │ VLM      │    │
-│  │    4     │  │ PDFium   │  │  stdio   │  │  OFF     │    │
-│  │ extract  │  │ 本地引擎  │  │JSON-RPC  │  │ 未配置   │    │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘    │
-├─────────────────────────────────────────────────────────────┤
-│  Available Tools                                             │
-│  ┌──────────────────┐  ┌──────────────────┐                 │
-│  │ 📄 extract_text  │  │ 🧊 extract_struct│                 │
-│  │ 提取纯文本        │  │ 提取结构化数据    │                 │
-│  │ [file_path]      │  │ [file_path]      │                 │
-│  └──────────────────┘  ──────────────────┘                 │
-│  ──────────────────┐  ┌──────────────────┐                 │
-│  │ 📑 get_page_count│  │ 🔍 search_keywords│                 │
-│  │ 获取页数          │  │ 关键词搜索        │                 │
-│  │ [file_path]      │  │ [path][keys][cs] │                 │
-│  └──────────────────┘  └──────────────────┘                 │
-├─────────────────────────────────────────────────────────────┤
-│  Quick Actions                                               │
-│  [📄 文本提取]  [🔍 关键词搜索]  [ 批量处理]  [ 工具测试]  │
-├─────────────────────────────────────────────────────────────┤
-│  Architecture                                                │
-│  AI Agent → pdf-mcp (stdio JSON-RPC) → PdfiumEngine → PDF   │
-─────────────────────────────────────────────────────────────┘
-```
-
-### 文本提取页
-
-```
-─────────────────────────────────────────────────────────────┐
-│  📄 Text Extraction                                           │
-├──────────────────────┬──────────────────────────────────────┤
-│  PDF File            │  📊 Stats                            │
-│  ┌──────────────────┐ │  Pages: 42  Chars: 15,234  1.2s    │
-│  │  📁 Drop PDF or  │ │  Engine: auto                        │
-│  │     Click        │ │                                      │
-│  └──────────────────┘ │  ┌──────────────────────────────┐  │
-│                       │  │ # Document Title              │  │
-│  Engine: [Auto ▾]     │  │ Extracted text content...     │  │
-│  Mode: ○ Text         │  │  - Paragraph 1                │  │
-│        ○ Structured   │  │  - Paragraph 2                │  │
-│                       │  │  [Table data...]              │  │
-│  [ Extract Button ]   │  ──────────────────────────────┘  │
-│                       │  [📋 Copy]                          │
-└──────────────────────┴──────────────────────────────────────┘
-```
-
-### 工具测试页
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│   MCP Tools                                                 │
-├─────────────────────────────────────────────────────────────┤
-│  Status: ● Connected  │  Tools: 4  │  Calls: 12  │  100%   │
-─────────────────────────────────────────────────────────────┤
-│  Select Tool              │  Execution Log                  │
-│  ┌──────────────────┐    │  ┌───────────────────────────┐  │
-│  │  extract_text  │    │  │ extract_text       ✓ 230ms│  │
-│  │ 提取纯文本        │    │  │ get_page_count     ✓ 45ms │  │
-│  └──────────────────┘    │  │ search_keywords    ✓ 890ms│  │
-│  ┌──────────────────┐    │  │ extract_structured ✓ 1.2s │  │
-│  │  extract_struct│    │  └───────────────────────────┘  │
-│  │ 提取结构化数据    │    │                                 │
-│  └──────────────────┘    │  Available Tools                 │
-│  ┌──────────────────┐    │  ● extract_text                  │
-│  │ 📑 get_page_count│    │  ● extract_structured            │
-│  │ 获取页数          │    │  ● get_page_count                │
-│  └──────────────────┘    │  ● search_keywords               │
-│  ┌──────────────────┐    │                                 │
-│  │ 🔍 search_keywords│   │                                 │
-│  │ 关键词搜索        │    │                                 │
-│  ──────────────────┘    │                                 │
-│                           │                                 │
-│  File Path: [_____________] [Browse]                        │
-│  Keywords: [_______]  ○ Case Sensitive                     │
-│  [ Execute ]                                                   │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 部署指南
+## 🚀 快速开始
 
 ### 方式一：Docker Compose（推荐）
-
-适合完整部署 MCP + Web 面板。
-
-#### 1. 创建 `docker-compose.yml`
 
 ```yaml
 version: "3.8"
 
 services:
-  # MCP 服务器 - stdio 协议
   pdf-mcp:
     image: smile9493/pdf-mcp:latest-mcp
     container_name: pdf-mcp
     restart: unless-stopped
     volumes:
       - ./data:/app/data
+      - ./wiki:/app/wiki
       - /path/to/pdfs:/pdfs:ro
     environment:
       - VLM_API_KEY=${VLM_API_KEY:-}
@@ -169,7 +115,6 @@ services:
     stdin_open: true
     tty: true
 
-  # Web 前端面板
   pdf-web:
     image: smile9493/pdf-mcp:latest-web
     container_name: pdf-web
@@ -178,165 +123,160 @@ services:
       - "80:80"
     depends_on:
       - pdf-mcp
-    environment:
-      - BACKEND_URL=http://pdf-mcp:8080
 ```
 
-#### 2. 创建 `.env` 文件（可选）
+### 方式二：二进制文件
 
-```bash
-# VLM 配置（可选，用于扫描件/混沌布局增强）
-VLM_API_KEY=sk-your-api-key
-VLM_ENDPOINT=https://api.openai.com/v1/chat/completions
-VLM_MODEL=gpt-4o
-```
+从 [Releases](https://github.com/smile9493/rsut_pdf_mcp/releases) 下载对应平台版本。
 
-#### 3. 启动服务
-
-```bash
-# 启动所有服务
-docker compose up -d
-
-# 查看日志
-docker compose logs -f
-
-# 停止服务
-docker compose down
-```
-
-#### 4. 访问 Web 面板
-
-打开浏览器访问: **http://localhost**
-
----
-
-### 方式二：Docker 独立运行
-
-#### 仅运行 MCP 服务器
-
-```bash
-# 拉取镜像
-docker pull smile9493/pdf-mcp:latest-mcp
-
-# 运行（stdin/stdout 模式，供 Agent 连接）
-docker run --rm -i \
-  -v /path/to/pdfs:/pdfs:ro \
-  -v $(pwd)/data:/app/data \
-  smile9493/pdf-mcp:latest-mcp
-
-# 带 VLM 配置
-docker run --rm -i \
-  -e VLM_API_KEY=sk-xxx \
-  -e VLM_MODEL=gpt-4o \
-  smile9493/pdf-mcp:latest-mcp
-```
-
-#### 仅运行 Web 前端
-
-```bash
-# 拉取镜像
-docker pull smile9493/pdf-mcp:latest-web
-
-# 默认端口 80
-docker run -d -p 80:80 smile9493/pdf-mcp:latest-web
-
-# 自定义端口
-docker run -d -p 3000:80 smile9493/pdf-mcp:latest-web
-```
-
----
-
-### 方式三：下载二进制文件
-
-从 [Releases](https://github.com/smile9493/rsut_pdf_mcp/releases) 下载：
-
-| 平台 | 文件 | 架构 |
-|------|------|------|
-| Linux x64 | `pdf-mcp-linux-x64.tar.gz` | x86_64 |
-| Linux ARM64 | `pdf-mcp-linux-arm64.tar.gz` | aarch64 |
-| macOS Intel | `pdf-mcp-macos-x64.tar.gz` | x86_64 |
-| macOS Apple Silicon | `pdf-mcp-macos-arm64.tar.gz` | aarch64 |
-| Windows x64 | `pdf-mcp-windows-x64.zip` | x86_64 |
-
-```bash
-# Linux/macOS
-tar -xzf pdf-mcp-linux-x64.tar.gz
-chmod +x pdf-mcp
-sudo mv pdf-mcp /usr/local/bin/
-
-# Windows - 解压 zip，将 pdf-mcp.exe 加入 PATH
-```
-
----
-
-### 方式四：从源码构建
+### 方式三：从源码构建
 
 ```bash
 git clone https://github.com/smile9493/rsut_pdf_mcp.git
-cd rsut_pdf_mcp
+cd rsut_pdf_mcp/pdf-module-rs
 
-# 构建 MCP 服务器
-cd pdf-module-rs
 cargo build --release --bin pdf-mcp
-# 二进制文件: target/release/pdf-mcp
-
-# 构建 Web 前端
-cd ../web
-npm install
-npm run build
-# 静态文件: dist/
 ```
 
+***
+
+## 📚 MCP 工具详解
+
+### 基础工具
+
+| 工具                   | 说明      | 参数                                         |
+| -------------------- | ------- | ------------------------------------------ |
+| `extract_text`       | 提取纯文本   | `file_path`                                |
+| `extract_structured` | 提取结构化数据 | `file_path`                                |
+| `get_page_count`     | 获取页数    | `file_path`                                |
+| `search_keywords`    | 关键词搜索   | `file_path`, `keywords`, `case_sensitive?` |
+
+### ⭐ 新增：Wiki自动化工具
+
+#### 1. `extrude_to_server_wiki` - 服务端构建模式
+
+**功能**: 在服务器端闭环完成提取、落盘与索引更新
+
+**参数**:
+
+- `file_path`: PDF文件绝对路径
+- `wiki_base_path`: Wiki存储基础目录（默认: `./wiki`）
+
+**返回示例**:
+
+```json
+{
+  "status": "success",
+  "raw_path": "/opt/wiki/raw/a1b2c3d4.raw.md",
+  "map_path": "/opt/wiki/MAP.md",
+  "page_count": 42,
+  "message": "PDF extracted and saved to wiki"
+}
+```
+
+**使用场景**: 大工程文档库、多设备共享大脑
+
+#### 2. `extrude_to_agent_payload` - 本地投影模式
+
+**功能**: 服务器仅进行计算，将Markdown报文发还给Agent
+
+**参数**:
+
+- `file_path`: PDF文件绝对路径
+
+**返回示例**:
+
+```markdown
+---
+source_file: /path/to/document.pdf
+file_hash: a1b2c3d4
+extraction_time: 2026-04-30T12:00:00Z
+page_count: 42
+quality_score: 0.85
+extraction_method: pdfium
 ---
 
-## Agent 集成
+# PDF Extraction Complete
+
+Your PDF has been successfully extracted...
+
+[完整提取内容]
+```
+
+**使用场景**: iOS/Windows本地Wiki构建
+
+***
+
+## 🧠 智能质量探测
+
+系统会自动分析PDF质量并选择最佳提取方法：
+
+```
+PDF → 质量探测 → 文本密度分析
+  ├─ Digital (text_density > 0.3) → Pdfium 本地提取
+  ├─ Scanned (无字体，有图像) → VLM 多模态增强
+  └─ LowQuality (text_density < 0.1) → 混合模式
+```
+
+**质量指标**:
+
+- 文本密度计算
+- 字体检测
+- 图像检测
+- 置信度评分
+
+***
+
+## 📂 Wiki自动化系统
+
+### 三级存储结构
+
+```
+wiki/
+├── raw/                    # 物理提取产物
+│   └── [hash].raw.md      # 带YAML元数据的原始提取
+├── wiki/                   # 精炼后的实体页面
+├── scheme/                 # 强类型约束文件
+└── MAP.md                  # 全局语义地图 (自动生成)
+```
+
+### YAML元数据示例
+
+```yaml
+---
+source_file: /path/to/document.pdf
+file_hash: a1b2c3d4
+extraction_time: 2026-04-30T12:00:00Z
+page_count: 42
+quality_score: 0.85
+extraction_method: pdfium
+---
+
+# Extracted Content
+
+[PDF文本内容...]
+```
+
+### MAP.md自动索引
+
+```markdown
+# PDF Knowledge Map
+
+## Raw Extractions
+
+- [a1b2c3d4.raw.md](raw/a1b2c3d4.raw.md)
+- [e5f6g7h8.raw.md](raw/e5f6g7h8.raw.md)
+
+**Total documents**: 2
+```
+
+***
+
+## ⚙️ Agent 集成配置
 
 ### Cursor 配置
 
-编辑 `~/.cursor/mcp.json`：
-
-```json
-{
-  "mcpServers": {
-    "pdf-module": {
-      "command": "/usr/local/bin/pdf-mcp"
-    }
-  }
-}
-```
-
-### Claude Desktop 配置
-
-编辑 `~/Library/Application Support/Claude/claude_desktop_config.json`：
-
-```json
-{
-  "mcpServers": {
-    "pdf-module": {
-      "command": "/usr/local/bin/pdf-mcp"
-    }
-  }
-}
-```
-
-### Docker 集成 (Cursor/Claude)
-
-```json
-{
-  "mcpServers": {
-    "pdf-module": {
-      "command": "docker",
-      "args": ["run", "--rm", "-i", "smile9493/pdf-mcp:latest-mcp"]
-    }
-  }
-}
-```
-
----
-
-## VLM 视觉增强配置 (可选)
-
-如需 VLM 视觉增强 (扫描件、混沌布局)：
+编辑 `~/.cursor/mcp.json`:
 
 ```json
 {
@@ -345,7 +285,6 @@ npm run build
       "command": "/usr/local/bin/pdf-mcp",
       "env": {
         "VLM_API_KEY": "sk-xxx",
-        "VLM_ENDPOINT": "https://api.openai.com/v1/chat/completions",
         "VLM_MODEL": "gpt-4o"
       }
     }
@@ -353,82 +292,145 @@ npm run build
 }
 ```
 
-| 环境变量 | 说明 | 默认值 |
-|---------|------|--------|
-| `VLM_API_KEY` | OpenAI/Anthropic API Key | - |
-| `VLM_ENDPOINT` | API 端点 | `https://api.openai.com/v1/chat/completions` |
-| `VLM_MODEL` | 模型名称 | `gpt-4o` |
+### Claude Desktop 配置
 
----
+编辑 `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
-## 版本说明
-
-### 版本标签规则
-
-| 标签格式 | 说明 | Docker 镜像标签 |
-|---------|------|----------------|
-| `v1.0.0` | 正式版本 | `smile9493/pdf-mcp:1.0.0-mcp`, `smile9493/pdf-mcp:1.0.0-web` |
-| `main` 分支 | 开发版本 | `smile9493/pdf-mcp:main-mcp`, `smile9493/pdf-mcp:main-web` |
-| `latest` | 最新稳定版 | `smile9493/pdf-mcp:latest-mcp`, `smile9493/pdf-mcp:latest-web` |
-
-### 发布流程
-
-```bash
-git tag v1.0.0
-git push origin main
-git push origin v1.0.0
+```json
+{
+  "mcpServers": {
+    "pdf-module": {
+      "command": "/usr/local/bin/pdf-mcp",
+      "env": {
+        "PDFIUM_LIB_PATH": "/opt/pdf-mcp/lib/",
+        "VLM_API_KEY": "sk-xxx"
+      }
+    }
+  }
+}
 ```
 
-推送 `v*` 标签后，CI 会自动构建所有平台二进制并创建 Release。
+***
 
-### 当前版本
+## 🔧 环境变量
 
-- **最新版本**: [查看 Releases](https://github.com/smile9493/rsut_pdf_mcp/releases)
-- **Docker 镜像**: [Docker Hub](https://hub.docker.com/r/smile9493/pdf-mcp)
+| 变量                    | 说明        | 默认值                                          |
+| --------------------- | --------- | -------------------------------------------- |
+| `VLM_API_KEY`         | VLM API密钥 | -                                            |
+| `VLM_ENDPOINT`        | VLM端点URL  | `https://api.openai.com/v1/chat/completions` |
+| `VLM_MODEL`           | 模型名称      | `gpt-4o`                                     |
+| `VLM_TIMEOUT_SECS`    | 请求超时      | `30`                                         |
+| `VLM_MAX_CONCURRENCY` | 最大并发      | `5`                                          |
+| `PDFIUM_LIB_PATH`     | Pdfium库路径 | -                                            |
 
----
+***
 
-## MCP 工具
+## 📊 性能指标
 
-| 工具 | 说明 | 参数 |
-|------|------|------|
-| `extract_text` | 提取纯文本 | `file_path` |
-| `extract_structured` | 提取结构化数据 | `file_path` |
-| `get_page_count` | 获取页数 | `file_path` |
-| `search_keywords` | 关键词搜索 | `file_path`, `keywords`, `case_sensitive?` |
+### 启动时间
 
----
+- **< 1ms**: 无HTTP服务开销，纯stdio通信
 
-## 项目结构
+### 内存占用
+
+- **零拷贝**: mmap直接映射，无堆拷贝
+- **Arena分配**: 请求级批量销毁
+
+### 提取速度
+
+- **Pdfium本地**: 确定性高性能
+- **VLM云端**: 智能增强扫描件
+
+***
+
+## 🧪 测试覆盖
+
+```bash
+running 24 tests
+test result: ok. 24 passed; 0 failed; 0 ignored
+```
+
+**测试覆盖**:
+
+- ✅ mmap加载器
+- ✅ 质量探测
+- ✅ Wiki存储
+- ✅ VLM管道
+- ✅ 错误处理
+
+***
+
+## 📁 项目结构
 
 ```
 pdf-module-rs/
 ├── crates/
-│   ├── pdf-common/         # error + dto + config
-│   ├── pdf-core/           # PdfiumEngine + FileValidator
-│   ├── pdf-mcp/            # MCP stdio 入口
-│   └── vlm-visual-gateway/ # VLM 条件升级
+│   ├── pdf-common/           # error + dto + config
+│   ├── pdf-core/             # 核心引擎
+│   │   ├── mmap_loader.rs    # 零拷贝加载器 ⭐
+│   │   ├── quality_probe.rs  # 质量探测器 ⭐
+│   │   ├── wiki.rs           # Wiki自动化 ⭐
+│   │   └── engine/           # Pdfium引擎
+│   ├── pdf-mcp/              # MCP stdio 入口
+│   └── vlm-visual-gateway/   # VLM条件升级
 
 web/
 ├── src/
-│   ├── views/
-│   │   ├── HomeView.vue         # 首页
-│   │   ├── ExtractView.vue      # 文本提取
-│   │   ├── SearchView.vue       # 关键词搜索
-│   │   ├── BatchProcessView.vue # 批量处理
-│   │   ├── McpToolsView.vue     # 工具测试
-│   │   └── SettingsView.vue     # 配置
-│   └── locales/
-│       ├── en.js                # 英文
-│       └── zh.js                # 中文
+│   ├── views/                # Vue组件
+│   └── locales/              # 国际化
 
 docker/
-├── Dockerfile.mcp               # MCP 服务器镜像
-── Dockerfile.ci                # Web 前端镜像
+├── Dockerfile.mcp            # MCP服务器镜像
+└── Dockerfile.ci             # Web前端镜像
 ```
 
----
+***
 
-## License
+## 📝 版本历史
+
+### v0.3.0 - 宗师级重构 (2026-04-30)
+
+**新增功能**:
+
+- ✨ mmap零拷贝加载器
+- ✨ 智能质量探测系统
+- ✨ Wiki自动化系统
+- ✨ 双模态MCP工具
+
+**性能优化**:
+
+- 🚀 物理顺应：mmap + Arena
+- 🚀 FFI防波堤：catch\_unwind
+- 🚀 启动时间：< 1ms
+
+**架构改进**:
+
+- 🏗️ 三级存储结构
+- 🏗️ 自动索引生成
+- 🏗️ 双模态工具集
+
+***
+
+## 🤝 贡献指南
+
+欢迎贡献！请查看 [CONTRIBUTING.md](CONTRIBUTING.md)
+
+***
+
+## 📄 License
 
 [MIT](LICENSE)
+
+***
+
+## 🙏 致谢
+
+本项目受以下工程哲学启发：
+
+- **唯物辩证法**: 矛盾驱动演化，量变到质变
+- **截拳道**: 以无法为有法，以无限为有限
+- **机械同情**: 软件顺应硬件，共振而非优化
+
+***
+
+**Made with ❤️ by the rsut\_pdf\_mcp team**

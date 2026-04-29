@@ -43,15 +43,69 @@ jobs:
           cd pdf-module-rs
           cargo test --all-targets --all-features
 
-      - name: Run clippy
+      - name: Run clippy (strict)
         run: |
           cd pdf-module-rs
-          cargo clippy --all-targets --all-features -- -D warnings
+          cargo clippy --all-targets --all-features -- -D warnings -D clippy::all
 
       - name: Check formatting
         run: |
           cd pdf-module-rs
           cargo fmt --all -- --check
+
+      - name: Check documentation
+        run: |
+          cd pdf-module-rs
+          cargo doc --no-deps --all-features
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny
+
+      - name: Security audit
+        run: |
+          cd pdf-module-rs
+          cargo deny check
+
+      - name: Check for known vulnerabilities
+        run: |
+          cd pdf-module-rs
+          cargo audit
+
+  code-coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov
+
+      - name: Generate coverage
+        run: |
+          cd pdf-module-rs
+          cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: lcov.info
+          fail_ci_if_error: false
 
   web-build:
     name: Build Web
@@ -106,7 +160,7 @@ jobs:
 
   build-mcp:
     name: MCP (${{ matrix.target }})
-    needs: test-rust
+    needs: [test-rust, security-audit]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:

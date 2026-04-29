@@ -1,9 +1,14 @@
 //! VLM-enhanced PDF extraction pipeline.
 //!
 //! Integrates `vlm-visual-gateway` with the existing Pdfium-based pipeline,
-//! implementing the conditional escalation strategy:
-//! - 90% normal documents stay on local Pdfium
-//! - 10% extreme cases (scans, chaotic layouts) escalate to VLM
+//! implementing the multi-model smart routing strategy:
+//!
+//! ```text
+//! PDF Page → Complexity Assessment → Smart Model Selection
+//!     ├─ Simple (text > 500 chars)    → GLM-4.6V-Flash (free)
+//!     ├─ Moderate (50-500 chars)      → GLM-4.6V-FlashX (lightweight)
+//!     └─ Complex (<50 chars, scanned) → GLM-4.6V (high performance)
+//! ```
 
 use std::path::Path;
 use std::sync::Arc;
@@ -11,8 +16,8 @@ use std::sync::Arc;
 use tracing::{info, warn};
 
 use vlm_visual_gateway::{
-    DetectionResult, EscalationDetector, LayoutResult, MetricsCollector, PayloadMetadata,
-    VlmConfig, VlmGateway,
+    DetectionResult, EscalationDetector, LayoutResult, MetricsCollector, PageComplexity,
+    PayloadMetadata, VlmConfig, VlmGateway, VlmModel,
 };
 
 use crate::config::ServerConfig;
@@ -43,6 +48,7 @@ pub struct VlmEnhancedResult {
     pub base_result: StructuredExtractionResult,
     pub layout_results: Vec<Option<LayoutResult>>,
     pub vlm_triggered: bool,
+    pub model_usage: Vec<(PageComplexity, VlmModel)>,
 }
 
 /// VLM-enhanced PDF extraction pipeline.
@@ -117,16 +123,39 @@ impl VlmEnhancedPipeline {
                 base_result,
                 layout_results: vec![None; page_count],
                 vlm_triggered: false,
+                model_usage: vec![],
             });
         }
 
         let mut layout_results: Vec<Option<LayoutResult>> = Vec::new();
         let mut vlm_triggered = false;
+        let mut model_usage: Vec<(PageComplexity, VlmModel)> = Vec::new();
 
         for page in &base_result.pages {
+            let text_len = page.text.len() as u32;
+            let layout_confidence = self.estimate_layout_confidence(page);
+            let complexity = Self::assess_page_complexity(text_len, layout_confidence);
+
+            let model = if self.gateway.as_ref().unwrap().config().enable_multi_model_routing {
+                VlmModel::select_for_complexity(complexity)
+            } else {
+                self.gateway.as_ref().unwrap().config().model
+            };
+
+            info!(
+                page_number = page.page_number,
+                complexity = ?complexity,
+                model = model.model_id(),
+                text_len = text_len,
+                layout_confidence = layout_confidence,
+                "Smart routing selected"
+            );
+
+            model_usage.push((complexity, model));
+
             let extraction = vlm_visual_gateway::PdfiumExtraction {
-                character_count: page.text.len() as u32,
-                layout_confidence: self.estimate_layout_confidence(page),
+                character_count: text_len,
+                layout_confidence,
                 text: page.text.clone(),
                 page_width: page.bbox.map(|b| b.2 as f32).unwrap_or(612.0),
                 page_height: page.bbox.map(|b| b.3 as f32).unwrap_or(792.0),
@@ -143,7 +172,8 @@ impl VlmEnhancedPipeline {
                     info!(
                         page_number = page.page_number,
                         detection = ?detection,
-                        "VLM escalation detected"
+                        model = model.model_id(),
+                        "VLM escalation triggered"
                     );
                     layout_results.push(None);
                 }
@@ -154,6 +184,7 @@ impl VlmEnhancedPipeline {
             base_result,
             layout_results,
             vlm_triggered,
+            model_usage,
         })
     }
 
@@ -204,6 +235,22 @@ impl VlmEnhancedPipeline {
                 warn!("VLM perceive failed: {e} - degrading to local");
                 Ok(None)
             }
+        }
+    }
+
+    /// Assess page complexity and return the appropriate level.
+    ///
+    /// # Complexity Levels
+    /// - **Simple**: >500 chars, good layout confidence (>0.7)
+    /// - **Moderate**: 50-500 chars, moderate confidence (0.3-0.7)
+    /// - **Complex**: <50 chars, low confidence (<0.3) — likely scanned/image
+    fn assess_page_complexity(text_len: u32, layout_confidence: f32) -> PageComplexity {
+        if text_len > 500 && layout_confidence > 0.7 {
+            PageComplexity::Simple
+        } else if text_len >= 50 && layout_confidence >= 0.3 {
+            PageComplexity::Moderate
+        } else {
+            PageComplexity::Complex
         }
     }
 
@@ -259,5 +306,38 @@ mod tests {
                 .collect(),
         };
         assert!(pipeline.estimate_layout_confidence(&page) > 0.8);
+    }
+
+    #[test]
+    fn test_page_complexity_assessment() {
+        // Simple page: lots of text, high confidence
+        assert_eq!(
+            VlmEnhancedPipeline::assess_page_complexity(1000, 0.9),
+            PageComplexity::Simple
+        );
+        assert_eq!(
+            VlmModel::select_for_complexity(PageComplexity::Simple),
+            VlmModel::Glm46vFlash
+        );
+
+        // Moderate page: some text, moderate confidence
+        assert_eq!(
+            VlmEnhancedPipeline::assess_page_complexity(200, 0.5),
+            PageComplexity::Moderate
+        );
+        assert_eq!(
+            VlmModel::select_for_complexity(PageComplexity::Moderate),
+            VlmModel::Glm46vFlashX
+        );
+
+        // Complex page: little/no text, low confidence (scanned)
+        assert_eq!(
+            VlmEnhancedPipeline::assess_page_complexity(10, 0.1),
+            PageComplexity::Complex
+        );
+        assert_eq!(
+            VlmModel::select_for_complexity(PageComplexity::Complex),
+            VlmModel::Glm46v
+        );
     }
 }

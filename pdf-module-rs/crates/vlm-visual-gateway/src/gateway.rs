@@ -10,7 +10,8 @@ use uuid::Uuid;
 use crate::error::{VlmError, VlmResult};
 use crate::metrics::MetricsCollector;
 use crate::types::{
-    LayoutResult, PayloadMetadata, Region, RegionType, VlmConfig, VlmPayload, VlmResponseRaw,
+    ChatCompletionResponse, GlmOcrResponse, LayoutResult, PayloadMetadata, Region, RegionType,
+    VlmConfig, VlmPayload,
 };
 
 /// VLM Gateway — the core component that dispatches visual perception
@@ -162,6 +163,11 @@ impl VlmGateway {
         }
     }
 
+    /// Access the gateway configuration for multi-model routing.
+    pub fn config(&self) -> &VlmConfig {
+        &self.config
+    }
+
     // ─── Private helpers ──────────────────────────────
 
     async fn dispatch_request(
@@ -179,43 +185,186 @@ impl VlmGateway {
         let timer = self.metrics.start_request_timer();
         let provider = self.config.model.model_id().to_string();
 
-        let result = timeout(self.config.timeout, self.send_request(payload)).await;
+        let max_retries = self.config.max_retries;
+        let mut attempt = 0;
+        let mut last_error: Option<VlmError> = None;
+
+        while attempt <= max_retries {
+            if attempt > 0 {
+                let delay = self.calculate_backoff(attempt);
+                info!(
+                    trace_id = %trace_id,
+                    attempt = attempt,
+                    delay_ms = delay.as_millis(),
+                    "Retrying VLM request"
+                );
+                tokio::time::sleep(delay).await;
+            }
+
+            let result = timeout(self.config.timeout, self.send_request(payload)).await;
+
+            match result {
+                Ok(Ok(response)) => {
+                    let layout = match self.parse_response(&response) {
+                        Ok(layout) => layout,
+                        Err(e) => {
+                            warn!(trace_id = %trace_id, error = %e, attempt = attempt, "Failed to parse VLM response");
+                            last_error = Some(e);
+                            attempt += 1;
+                            continue;
+                        }
+                    };
+                    drop(permit);
+                    timer.observe_success(&provider);
+                    info!(trace_id = %trace_id, "VLM perceive_layout succeeded");
+                    return Ok(layout);
+                }
+                Ok(Err(e)) => {
+                    let is_retryable = Self::is_retryable_error(&e);
+                    let reason = match &e {
+                        VlmError::RateLimit => "rate_limit",
+                        VlmError::Unavailable(_) => "unavailable",
+                        _ => "network_error",
+                    };
+
+                    warn!(trace_id = %trace_id, error = %e, attempt = attempt, retryable = is_retryable, "VLM request failed");
+
+                    if !is_retryable || attempt >= max_retries {
+                        drop(permit);
+                        timer.observe_error(&provider);
+                        self.metrics.record_degradation(reason);
+                        warn!(trace_id = %trace_id, error = %e, "VLM request failed - degrading");
+                        return Err(e);
+                    }
+
+                    last_error = Some(e);
+                    attempt += 1;
+                }
+                Err(_) => {
+                    let is_retryable = attempt < max_retries;
+                    warn!(trace_id = %trace_id, attempt = attempt, retryable = is_retryable, "VLM request timed out");
+
+                    if !is_retryable {
+                        drop(permit);
+                        timer.observe_timeout(&provider);
+                        self.metrics.record_degradation("timeout");
+                        warn!(trace_id = %trace_id, "VLM request timed out - degrading");
+                        return Err(VlmError::Timeout(self.config.timeout.as_secs()));
+                    }
+
+                    last_error = Some(VlmError::Timeout(self.config.timeout.as_secs()));
+                    attempt += 1;
+                }
+            }
+        }
 
         drop(permit);
+        timer.observe_error(&provider);
+        self.metrics.record_degradation("max_retries_exceeded");
+        warn!(trace_id = %trace_id, "All retry attempts exhausted - degrading");
+        Err(last_error.unwrap_or_else(|| VlmError::Unavailable("max retries exceeded".into())))
+    }
 
-        match result {
-            Ok(Ok(response)) => {
-                let layout = self.parse_response(&response)?;
-                timer.observe_success(&provider);
-                info!(trace_id = %trace_id, "VLM perceive_layout succeeded");
-                Ok(layout)
-            }
-            Ok(Err(e)) => {
-                let reason = match &e {
-                    VlmError::RateLimit => "rate_limit",
-                    VlmError::Unavailable(_) => "unavailable",
-                    _ => "network_error",
-                };
-                timer.observe_error(&provider);
-                self.metrics.record_degradation(reason);
-                warn!(trace_id = %trace_id, error = %e, "VLM request failed - degrading");
-                Err(e)
-            }
-            Err(_) => {
-                timer.observe_timeout(&provider);
-                self.metrics.record_degradation("timeout");
-                warn!(trace_id = %trace_id, "VLM request timed out - degrading");
-                Err(VlmError::Timeout(self.config.timeout.as_secs()))
-            }
+    fn is_retryable_error(error: &VlmError) -> bool {
+        match error {
+            VlmError::RateLimit
+            | VlmError::Unavailable(_)
+            | VlmError::Network(_)
+            | VlmError::Timeout(_) => true,
+            VlmError::ParseError(_)
+            | VlmError::InvalidImage(_)
+            | VlmError::Config(_) => false,
         }
     }
 
+    fn calculate_backoff(&self, attempt: u32) -> Duration {
+        let base_delay = self.config.retry_delay_base.as_millis() as u64;
+        let delay_ms = base_delay * 2u64.pow(attempt);
+        let max_delay = self.config.retry_delay_max.as_millis() as u64;
+        let delay = delay_ms.min(max_delay);
+        let jitter = delay * 10 / 100;
+        Duration::from_millis(delay + jitter)
+    }
+
     async fn send_request(&self, payload: &VlmPayload) -> VlmResult<String> {
+        let is_ocr = self.config.model.uses_layout_parsing_endpoint();
+
+        if is_ocr {
+            self.send_ocr_request(payload).await
+        } else {
+            self.send_chat_request(payload).await
+        }
+    }
+
+    async fn send_chat_request(&self, payload: &VlmPayload) -> VlmResult<String> {
+        let enable_thinking = self.config.enable_thinking
+            && self.config.model.supports_thinking();
+        let enable_function_call = self.config.enable_function_call
+            && self.config.model.supports_function_call();
+
+        let chat_request = payload.to_chat_request(
+            "Analyze this PDF page and identify all layout regions. \
+             For each region, provide: type (title/body/table/image/caption), \
+             coordinates as [xmin,ymin,xmax,ymax], and a brief content description. \
+             Format each region on a separate line.",
+            enable_thinking,
+            enable_function_call,
+        );
+
         let resp = self
             .client
             .post(&self.config.endpoint)
             .header("Authorization", format!("Bearer {}", self.config.api_key))
-            .json(payload)
+            .header("Content-Type", "application/json")
+            .json(&chat_request)
+            .send()
+            .await
+            .map_err(|e| {
+                if e.is_timeout() {
+                    VlmError::Timeout(self.config.timeout.as_secs())
+                } else if e.is_connect() {
+                    VlmError::Unavailable(e.to_string())
+                } else {
+                    VlmError::Network(e.to_string())
+                }
+            })?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return if status.as_u16() == 429 {
+                Err(VlmError::RateLimit)
+            } else if status.as_u16() >= 500 {
+                Err(VlmError::Unavailable(format!("HTTP {status}: {body}")))
+            } else {
+                Err(VlmError::Network(format!("HTTP {status}: {body}")))
+            };
+        }
+
+        resp.text()
+            .await
+            .map_err(|e| VlmError::Network(e.to_string()))
+    }
+
+    async fn send_ocr_request(&self, payload: &VlmPayload) -> VlmResult<String> {
+        let ocr_request = crate::types::GlmOcrRequest {
+            model: self.config.model.model_id().to_string(),
+            file: format!("data:application/pdf;base64,{}", payload.image),
+        };
+
+        let endpoint_base = self
+            .config
+            .endpoint
+            .trim_end_matches("/api/paas/v4/chat/completions")
+            .trim_end_matches("/api/paas/v4/layout_parsing");
+        let ocr_endpoint = format!("{}{}", endpoint_base, self.config.model.api_path());
+
+        let resp = self
+            .client
+            .post(&ocr_endpoint)
+            .header("Authorization", format!("Bearer {}", self.config.api_key))
+            .header("Content-Type", "application/json")
+            .json(&ocr_request)
             .send()
             .await
             .map_err(|e| {
@@ -246,46 +395,153 @@ impl VlmGateway {
     }
 
     fn parse_response(&self, body: &str) -> VlmResult<LayoutResult> {
-        let raw: VlmResponseRaw =
+        if self.config.model.uses_layout_parsing_endpoint() {
+            self.parse_ocr_response(body)
+        } else {
+            self.parse_chat_response(body)
+        }
+    }
+
+    fn parse_chat_response(&self, body: &str) -> VlmResult<LayoutResult> {
+        let chat_response: ChatCompletionResponse =
             serde_json::from_str(body).map_err(|e| VlmError::ParseError(e.to_string()))?;
 
-        let regions: Vec<Region> = raw
-            .regions
+        let message_content = chat_response
+            .choices
+            .first()
+            .and_then(|c| c.message.content.as_ref())
+            .ok_or_else(|| VlmError::ParseError("empty response from VLM".into()))?;
+
+        let regions = self.parse_layout_from_text(message_content);
+
+        Ok(LayoutResult {
+            regions,
+            reading_order: Vec::new(),
+            confidence: 1.0,
+        })
+    }
+
+    fn parse_ocr_response(&self, body: &str) -> VlmResult<LayoutResult> {
+        let ocr_response: GlmOcrResponse =
+            serde_json::from_str(body).map_err(|e| VlmError::ParseError(e.to_string()))?;
+
+        let mut regions = Vec::new();
+        let mut total_text = String::new();
+
+        for page_items in &ocr_response.layout_details {
+            for item in page_items {
+                if item.label == "text" || item.label == "title" || item.label == "caption"
+                    || item.label == "table" || item.label == "list"
+                {
+                    if let Some(ref content) = item.content {
+                        total_text.push_str(content);
+                        total_text.push('\n');
+
+                        if let Some(bbox) = &item.bbox_2d {
+                            let region_type = match item.label.as_str() {
+                                "title" => RegionType::Title,
+                                "table" => RegionType::Table,
+                                "caption" => RegionType::Caption,
+                                "image" => RegionType::Image,
+                                _ => RegionType::Body,
+                            };
+
+                            regions.push(Region {
+                                region_type,
+                                bbox: crate::types::BoundingBox {
+                                    x: bbox[0] as f32,
+                                    y: bbox[1] as f32,
+                                    width: (bbox[2] - bbox[0]) as f32,
+                                    height: (bbox[3] - bbox[1]) as f32,
+                                },
+                                content: content.clone(),
+                            });
+                        }
+                    }
+                } else if item.label == "image" {
+                    regions.push(Region {
+                        region_type: RegionType::Image,
+                        bbox: item.bbox_2d.map_or_else(
+                            || crate::types::BoundingBox {
+                                x: 0.0,
+                                y: 0.0,
+                                width: 0.0,
+                                height: 0.0,
+                            },
+                            |bbox| crate::types::BoundingBox {
+                                x: bbox[0] as f32,
+                                y: bbox[1] as f32,
+                                width: (bbox[2] - bbox[0]) as f32,
+                                height: (bbox[3] - bbox[1]) as f32,
+                            },
+                        ),
+                        content: "[image]".to_string(),
+                    });
+                }
+            }
+        }
+
+        let _text = ocr_response.text.unwrap_or(total_text);
+        let confidence = if regions.is_empty() { 0.0 } else { 1.0 };
+
+        Ok(LayoutResult {
+            regions,
+            reading_order: Vec::new(),
+            confidence,
+        })
+    }
+
+    fn parse_layout_from_text(&self, text: &str) -> Vec<Region> {
+        let mut regions = Vec::new();
+
+        let coord_regex = regex::Regex::new(r"\[\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\]").ok();
+        let region_type_regex =
+            regex::Regex::new(r"(?i)(title|body|table|image|caption|paragraph|heading)")
+                .ok();
+
+        for cap in coord_regex
+            .as_ref()
+            .map(|r| r.captures_iter(text))
             .into_iter()
-            .filter_map(|r| {
-                let region_type = match r.region_type.as_str() {
+            .flatten()
+        {
+            let x = cap[1].parse::<f32>().unwrap_or(0.0);
+            let y = cap[2].parse::<f32>().unwrap_or(0.0);
+            let w = cap[3].parse::<f32>().unwrap_or(0.0);
+            let h = cap[4].parse::<f32>().unwrap_or(0.0);
+
+            let context_start = (cap.get(0).unwrap().start() as i64 - 50).max(0) as usize;
+            let context_end = (cap.get(0).unwrap().end() + 50).min(text.len());
+            let context = &text[context_start..context_end];
+
+            let region_type = region_type_regex
+                .as_ref()
+                .and_then(|r| r.captures(context))
+                .and_then(|c| c.get(1))
+                .map(|m| m.as_str().to_lowercase())
+                .map(|s| match s.as_str() {
                     "title" => RegionType::Title,
                     "body" => RegionType::Body,
                     "table" => RegionType::Table,
                     "image" => RegionType::Image,
                     "caption" => RegionType::Caption,
-                    _ => return None,
-                };
-                if r.bbox.len() != 4 {
-                    return None;
-                }
-                Some(Region {
-                    region_type,
-                    bbox: crate::types::BoundingBox {
-                        x: r.bbox[0],
-                        y: r.bbox[1],
-                        width: r.bbox[2],
-                        height: r.bbox[3],
-                    },
-                    content: r.content,
+                    _ => RegionType::Body,
                 })
-            })
-            .collect();
+                .unwrap_or(RegionType::Body);
 
-        Ok(LayoutResult {
-            regions,
-            reading_order: raw.reading_order,
-            confidence: raw.confidence,
-        })
-    }
+            regions.push(Region {
+                region_type,
+                bbox: crate::types::BoundingBox {
+                    x,
+                    y,
+                    width: w - x,
+                    height: h - y,
+                },
+                content: cap[0].to_string(),
+            });
+        }
 
-    pub fn config(&self) -> &VlmConfig {
-        &self.config
+        regions
     }
 }
 
