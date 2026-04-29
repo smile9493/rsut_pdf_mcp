@@ -22,6 +22,7 @@
     "vue3-apexcharts": "^1.4.4"
   },
   "devDependencies": {
+    "@heroicons/vue": "^2.2.0",
     "@types/node": "^20.10.0",
     "@vitejs/plugin-vue": "^5.0.0",
     "@vue/tsconfig": "^0.5.1",
