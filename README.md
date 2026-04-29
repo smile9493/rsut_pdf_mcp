@@ -41,32 +41,222 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                   Web Dashboard (Vue 3)                     │
 ├─────────────────────────────────────────────────────────────┤
-│  /mcp-config   │ MCP 配置 (服务器 + VLM API Key)            │
-│  /mcp-monitor  │ 实时监控 (连接、工具调用、日志)             │
-│  /mcp-tools    │ 工具测试                                    │
-│  /extract      │ 文本提取                                    │
-│  /search       │ 关键词搜索                                  │
-│  /batch        │ 批量处理                                    │
+│  /              │ 首页 (状态、工具概览、快速操作)             │
+│  /extract       │ 文本提取                                    │
+│  /search        │ 关键词搜索                                  │
+│  /batch         │ 批量处理                                    │
+│  /mcp-tools     │ 工具测试                                    │
+│  /settings      │ MCP 配置 (服务器 + VLM API Key)            │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 快速开始
+## Web 界面预览
 
-### 方式一：下载二进制文件
+### 首页 - 状态总览
 
-从 [Releases](https://github.com/smile9493/rsut_pdf_mcp/releases) 下载对应平台的二进制文件：
+```
+┌─────────────────────────────────────────────────────────────┐
+│  📊 PDF Module Dashboard                                      │
+│  极简 PDF 提取 MCP 管道 - 单一引擎、纯 stdio、条件升级         │
+─────────────────────────────────────────────────────────────┤
+│  ┌──────────┐  ┌──────────┐  ┌──────────  ┌──────────┐    │
+│  │ MCP Tools│  │ Engine   │  │ Protocol │  │ VLM      │    │
+│  │    4     │  │ PDFium   │  │  stdio   │  │  OFF     │    │
+│  │ extract  │  │ 本地引擎  │  │JSON-RPC  │  │ 未配置   │    │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘    │
+├─────────────────────────────────────────────────────────────┤
+│  Available Tools                                             │
+│  ┌──────────────────┐  ┌──────────────────┐                 │
+│  │ 📄 extract_text  │  │ 🧊 extract_struct│                 │
+│  │ 提取纯文本        │  │ 提取结构化数据    │                 │
+│  │ [file_path]      │  │ [file_path]      │                 │
+│  └──────────────────┘  ──────────────────┘                 │
+│  ──────────────────┐  ┌──────────────────┐                 │
+│  │ 📑 get_page_count│  │ 🔍 search_keywords│                 │
+│  │ 获取页数          │  │ 关键词搜索        │                 │
+│  │ [file_path]      │  │ [path][keys][cs] │                 │
+│  └──────────────────┘  └──────────────────┘                 │
+├─────────────────────────────────────────────────────────────┤
+│  Quick Actions                                               │
+│  [📄 文本提取]  [🔍 关键词搜索]  [ 批量处理]  [ 工具测试]  │
+├─────────────────────────────────────────────────────────────┤
+│  Architecture                                                │
+│  AI Agent → pdf-mcp (stdio JSON-RPC) → PdfiumEngine → PDF   │
+─────────────────────────────────────────────────────────────┘
+```
+
+### 文本提取页
+
+```
+─────────────────────────────────────────────────────────────┐
+│  📄 Text Extraction                                           │
+├──────────────────────┬──────────────────────────────────────┤
+│  PDF File            │  📊 Stats                            │
+│  ┌──────────────────┐ │  Pages: 42  Chars: 15,234  1.2s    │
+│  │  📁 Drop PDF or  │ │  Engine: auto                        │
+│  │     Click        │ │                                      │
+│  └──────────────────┘ │  ┌──────────────────────────────┐  │
+│                       │  │ # Document Title              │  │
+│  Engine: [Auto ▾]     │  │ Extracted text content...     │  │
+│  Mode: ○ Text         │  │  - Paragraph 1                │  │
+│        ○ Structured   │  │  - Paragraph 2                │  │
+│                       │  │  [Table data...]              │  │
+│  [ Extract Button ]   │  ──────────────────────────────┘  │
+│                       │  [📋 Copy]                          │
+└──────────────────────┴──────────────────────────────────────┘
+```
+
+### 工具测试页
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│   MCP Tools                                                 │
+├─────────────────────────────────────────────────────────────┤
+│  Status: ● Connected  │  Tools: 4  │  Calls: 12  │  100%   │
+─────────────────────────────────────────────────────────────┤
+│  Select Tool              │  Execution Log                  │
+│  ┌──────────────────┐    │  ┌───────────────────────────┐  │
+│  │  extract_text  │    │  │ extract_text       ✓ 230ms│  │
+│  │ 提取纯文本        │    │  │ get_page_count     ✓ 45ms │  │
+│  └──────────────────┘    │  │ search_keywords    ✓ 890ms│  │
+│  ┌──────────────────┐    │  │ extract_structured ✓ 1.2s │  │
+│  │  extract_struct│    │  └───────────────────────────┘  │
+│  │ 提取结构化数据    │    │                                 │
+│  └──────────────────┘    │  Available Tools                 │
+│  ┌──────────────────┐    │  ● extract_text                  │
+│  │ 📑 get_page_count│    │  ● extract_structured            │
+│  │ 获取页数          │    │  ● get_page_count                │
+│  └──────────────────┘    │  ● search_keywords               │
+│  ┌──────────────────┐    │                                 │
+│  │ 🔍 search_keywords│   │                                 │
+│  │ 关键词搜索        │    │                                 │
+│  ──────────────────┘    │                                 │
+│                           │                                 │
+│  File Path: [_____________] [Browse]                        │
+│  Keywords: [_______]  ○ Case Sensitive                     │
+│  [ Execute ]                                                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 部署指南
+
+### 方式一：Docker Compose（推荐）
+
+适合完整部署 MCP + Web 面板。
+
+#### 1. 创建 `docker-compose.yml`
+
+```yaml
+version: "3.8"
+
+services:
+  # MCP 服务器 - stdio 协议
+  pdf-mcp:
+    image: smile9493/pdf-mcp:latest-mcp
+    container_name: pdf-mcp
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+      - /path/to/pdfs:/pdfs:ro
+    environment:
+      - VLM_API_KEY=${VLM_API_KEY:-}
+      - VLM_ENDPOINT=${VLM_ENDPOINT:-https://api.openai.com/v1/chat/completions}
+      - VLM_MODEL=${VLM_MODEL:-gpt-4o}
+    stdin_open: true
+    tty: true
+
+  # Web 前端面板
+  pdf-web:
+    image: smile9493/pdf-mcp:latest-web
+    container_name: pdf-web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - pdf-mcp
+    environment:
+      - BACKEND_URL=http://pdf-mcp:8080
+```
+
+#### 2. 创建 `.env` 文件（可选）
+
+```bash
+# VLM 配置（可选，用于扫描件/混沌布局增强）
+VLM_API_KEY=sk-your-api-key
+VLM_ENDPOINT=https://api.openai.com/v1/chat/completions
+VLM_MODEL=gpt-4o
+```
+
+#### 3. 启动服务
+
+```bash
+# 启动所有服务
+docker compose up -d
+
+# 查看日志
+docker compose logs -f
+
+# 停止服务
+docker compose down
+```
+
+#### 4. 访问 Web 面板
+
+打开浏览器访问: **http://localhost**
+
+---
+
+### 方式二：Docker 独立运行
+
+#### 仅运行 MCP 服务器
+
+```bash
+# 拉取镜像
+docker pull smile9493/pdf-mcp:latest-mcp
+
+# 运行（stdin/stdout 模式，供 Agent 连接）
+docker run --rm -i \
+  -v /path/to/pdfs:/pdfs:ro \
+  -v $(pwd)/data:/app/data \
+  smile9493/pdf-mcp:latest-mcp
+
+# 带 VLM 配置
+docker run --rm -i \
+  -e VLM_API_KEY=sk-xxx \
+  -e VLM_MODEL=gpt-4o \
+  smile9493/pdf-mcp:latest-mcp
+```
+
+#### 仅运行 Web 前端
+
+```bash
+# 拉取镜像
+docker pull smile9493/pdf-mcp:latest-web
+
+# 默认端口 80
+docker run -d -p 80:80 smile9493/pdf-mcp:latest-web
+
+# 自定义端口
+docker run -d -p 3000:80 smile9493/pdf-mcp:latest-web
+```
+
+---
+
+### 方式三：下载二进制文件
+
+从 [Releases](https://github.com/smile9493/rsut_pdf_mcp/releases) 下载：
 
 | 平台 | 文件 | 架构 |
 |------|------|------|
-| Windows x64 | `pdf-mcp-windows-x64.zip` | x86_64 |
 | Linux x64 | `pdf-mcp-linux-x64.tar.gz` | x86_64 |
 | Linux ARM64 | `pdf-mcp-linux-arm64.tar.gz` | aarch64 |
-| macOS x64 | `pdf-mcp-macos-x64.tar.gz` | x86_64 (Intel) |
-| macOS ARM64 | `pdf-mcp-macos-arm64.tar.gz` | aarch64 (Apple Silicon) |
-
-**安装步骤：**
+| macOS Intel | `pdf-mcp-macos-x64.tar.gz` | x86_64 |
+| macOS Apple Silicon | `pdf-mcp-macos-arm64.tar.gz` | aarch64 |
+| Windows x64 | `pdf-mcp-windows-x64.zip` | x86_64 |
 
 ```bash
 # Linux/macOS
@@ -74,43 +264,27 @@ tar -xzf pdf-mcp-linux-x64.tar.gz
 chmod +x pdf-mcp
 sudo mv pdf-mcp /usr/local/bin/
 
-# Windows
-# 解压 zip 文件，将 pdf-mcp.exe 添加到 PATH
+# Windows - 解压 zip，将 pdf-mcp.exe 加入 PATH
 ```
 
-### 方式二：Docker 部署
+---
+
+### 方式四：从源码构建
 
 ```bash
-# 拉取最新 MCP 服务器镜像
-docker pull smile9493/pdf-mcp:latest-mcp
-
-# 拉取最新 Web 前端镜像
-docker pull smile9493/pdf-mcp:latest-web
-
-# 运行 MCP 服务器 (stdio 模式)
-docker run --rm -i smile9493/pdf-mcp:latest-mcp
-
-# 运行 Web 前端
-docker run -d -p 80:80 smile9493/pdf-mcp:latest-web
-```
-
-### 方式三：从源码构建
-
-```bash
-# 克隆仓库
 git clone https://github.com/smile9493/rsut_pdf_mcp.git
 cd rsut_pdf_mcp
 
 # 构建 MCP 服务器
 cd pdf-module-rs
 cargo build --release --bin pdf-mcp
-# 二进制文件位于: target/release/pdf-mcp
+# 二进制文件: target/release/pdf-mcp
 
 # 构建 Web 前端
 cd ../web
 npm install
 npm run build
-# 静态文件位于: dist/
+# 静态文件: dist/
 ```
 
 ---
@@ -187,44 +361,6 @@ npm run build
 
 ---
 
-## Web Dashboard
-
-### 本地开发
-
-```bash
-cd web
-npm install
-npm run dev
-```
-
-访问 http://localhost:5173
-
-### Docker 部署
-
-```bash
-# 拉取并运行
-docker pull smile9493/pdf-mcp:latest-web
-docker run -d -p 80:80 smile9493/pdf-mcp:latest-web
-
-# 自定义端口
-docker run -d -p 3000:80 smile9493/pdf-mcp:latest-web
-```
-
-### 生产环境部署 (Nginx)
-
-```bash
-# 构建静态文件
-cd web && npm run build
-
-# 使用 Nginx 部署
-docker run -d -p 80:80 \
-  -v $(pwd)/dist:/usr/share/nginx/html \
-  -v ./nginx.conf:/etc/nginx/nginx.conf \
-  nginx:alpine
-```
-
----
-
 ## 版本说明
 
 ### 版本标签规则
@@ -238,22 +374,12 @@ docker run -d -p 80:80 \
 ### 发布流程
 
 ```bash
-# 1. 确保代码已提交
-git add . && git commit -m "准备发布 v1.0.0"
-
-# 2. 创建版本标签
 git tag v1.0.0
-
-# 3. 推送代码和标签
 git push origin main
 git push origin v1.0.0
 ```
 
-推送 `v*` 格式的标签后，CI 会自动：
-1. 构建所有平台的二进制文件
-2. 构建 Web 前端静态文件
-3. 构建并推送 Docker 镜像
-4. 创建 GitHub Release 并上传所有产物
+推送 `v*` 标签后，CI 会自动构建所有平台二进制并创建 Release。
 
 ### 当前版本
 
@@ -269,72 +395,7 @@ git push origin v1.0.0
 | `extract_text` | 提取纯文本 | `file_path` |
 | `extract_structured` | 提取结构化数据 | `file_path` |
 | `get_page_count` | 获取页数 | `file_path` |
-
-### 示例调用
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "tools/call",
-  "params": {
-    "name": "extract_text",
-    "arguments": { "file_path": "/path/to/document.pdf" }
-  }
-}
-```
-
----
-
-## CI/CD 工作流
-
-本项目使用 GitHub Actions 进行持续集成和发布。
-
-### 触发条件
-
-| 事件 | 触发任务 |
-|------|---------|
-| `push` 到 `main` | 测试、构建、Docker 推送 (需配置) |
-| `push` 标签 `v*` | 测试、构建、创建 Release |
-| `pull_request` | 测试、构建验证 |
-| 手动触发 | 全部任务 |
-
-### 工作流任务
-
-```
-test-rust → build-mcp (5平台) → docker-mcp → release
-                ↓
-            web-build → docker-web
-```
-
-### 构建产物
-
-| 产物 | 说明 |
-|------|------|
-| `pdf-mcp-linux-x64.tar.gz` | Linux x64 二进制 |
-| `pdf-mcp-linux-arm64.tar.gz` | Linux ARM64 二进制 |
-| `pdf-mcp-macos-x64.tar.gz` | macOS Intel 二进制 |
-| `pdf-mcp-macos-arm64.tar.gz` | macOS Apple Silicon 二进制 |
-| `pdf-mcp-windows-x64.zip` | Windows x64 二进制 |
-| `web-dist.tar.gz` | Web 前端静态文件 |
-| `smile9493/pdf-mcp:*-mcp` | MCP 服务器 Docker 镜像 |
-| `smile9493/pdf-mcp:*-web` | Web 前端 Docker 镜像 |
-
----
-
-## 剔除清单
-
-基于奥卡姆剃刀原则，以下冗余已被剔除：
-
-| 剔除项 | 原因 |
-|--------|------|
-| REST API | MCP stdio 是最终契约 |
-| Python SDK | 官方 MCP SDK 足矣 |
-| 多引擎抽象 | pdfium 胜任所有场景 |
-| 缓存模块 | 大模型自带 Prompt Caching |
-| 熔断器 | 本地 I/O 无需网络熔断 |
-| SSE 传输 | stdio 是 MCP 标准 |
-| 智能路由 | 无路由 = 无分支预测惩罚 |
+| `search_keywords` | 关键词搜索 | `file_path`, `keywords`, `case_sensitive?` |
 
 ---
 
@@ -344,7 +405,6 @@ test-rust → build-mcp (5平台) → docker-mcp → release
 pdf-module-rs/
 ├── crates/
 │   ├── pdf-common/         # error + dto + config
-│   ├── pdf-macros/         # 过程宏
 │   ├── pdf-core/           # PdfiumEngine + FileValidator
 │   ├── pdf-mcp/            # MCP stdio 入口
 │   └── vlm-visual-gateway/ # VLM 条件升级
@@ -352,35 +412,20 @@ pdf-module-rs/
 web/
 ├── src/
 │   ├── views/
-│   │   ├── McpConfigView.vue    # MCP 配置
-│   │   ├── McpMonitorView.vue   # MCP 监控
-│   │   └── McpToolsView.vue     # 工具测试
-│   ├── stores/
-│   │   └── mcpStore.ts          # MCP 状态管理
-│   └── composables/
-│       └── useAsyncAction.ts    # 统一异步处理
+│   │   ├── HomeView.vue         # 首页
+│   │   ├── ExtractView.vue      # 文本提取
+│   │   ├── SearchView.vue       # 关键词搜索
+│   │   ├── BatchProcessView.vue # 批量处理
+│   │   ├── McpToolsView.vue     # 工具测试
+│   │   └── SettingsView.vue     # 配置
+│   └── locales/
+│       ├── en.js                # 英文
+│       └── zh.js                # 中文
 
 docker/
 ├── Dockerfile.mcp               # MCP 服务器镜像
-└── Dockerfile.ci                # Web 前端镜像
+── Dockerfile.ci                # Web 前端镜像
 ```
-
----
-
-## FFI 防波堤
-
-所有 pdfium C++ 调用被 `catch_unwind` 包裹：
-
-```rust
-pub fn safe_extract_text(data: &[u8]) -> PdfResult<String> {
-    catch_unwind(|| {
-        // pdfium C++ 调用
-    })
-    .map_err(|_| PdfModuleError::Extraction("FFI panic".into()))?
-}
-```
-
-C++ 崩溃无法越界污染 Rust 调用栈。
 
 ---
 
