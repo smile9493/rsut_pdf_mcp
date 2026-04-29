@@ -55,13 +55,11 @@ impl ToolStats {
                 }
             }
             "extract_structured" => {
-                self.extract_structured_calls
-                    .fetch_add(1, Ordering::Relaxed);
+                self.extract_structured_calls.fetch_add(1, Ordering::Relaxed);
                 self.extract_structured_latency_ms
                     .fetch_add(latency_ms, Ordering::Relaxed);
                 if !success {
-                    self.extract_structured_errors
-                        .fetch_add(1, Ordering::Relaxed);
+                    self.extract_structured_errors.fetch_add(1, Ordering::Relaxed);
                 }
             }
             "get_page_count" => {
@@ -210,7 +208,12 @@ async fn metrics(State(state): State<AppState>) -> Json<DashboardMetrics> {
 
     let files_processed = stats.files_processed.load(Ordering::Relaxed);
 
-    fn tool_stat(name: &str, calls: u64, latency: u64, errors: u64) -> ToolStat {
+    fn tool_stat(
+        name: &str,
+        calls: u64,
+        latency: u64,
+        errors: u64,
+    ) -> ToolStat {
         let avg = latency.checked_div(calls).unwrap_or(0);
         let rate = if calls > 0 {
             ((calls - errors) as f64 / calls as f64) * 100.0
@@ -300,10 +303,7 @@ async fn record_tool_call(
 ) -> impl IntoResponse {
     let tool = body.get("tool").and_then(|v| v.as_str()).unwrap_or("");
     let latency = body.get("latency_ms").and_then(|v| v.as_u64()).unwrap_or(0);
-    let success = body
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true);
+    let success = body.get("success").and_then(|v| v.as_bool()).unwrap_or(true);
 
     state.stats.record(tool, latency, success);
 
@@ -453,7 +453,8 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_target(false)
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "info".into()),
         )
         .init();
 

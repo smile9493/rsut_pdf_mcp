@@ -101,28 +101,26 @@ version: "3.8"
 
 services:
   pdf-mcp:
-    image: smile9493/pdf-mcp:latest-mcp
+    image: smile9493/pdf-mcp:0.1.1
     container_name: pdf-mcp
     restart: unless-stopped
+    ports:
+      - "8000:8000"   # Dashboard Web UI
+      - "8001:8001"   # MCP SSE (可选)
     volumes:
       - ./data:/app/data
       - ./wiki:/app/wiki
       - /path/to/pdfs:/pdfs:ro
     environment:
+      - RUST_LOG=info
+      - STORAGE_TYPE=local
+      - STORAGE_LOCAL_DIR=/app/data
+      - DASHBOARD_WEB_DIR=/app/web/dist
+      - DASHBOARD_PORT=8000
       - VLM_API_KEY=${VLM_API_KEY:-}
-      - VLM_ENDPOINT=${VLM_ENDPOINT:-https://api.openai.com/v1/chat/completions}
       - VLM_MODEL=${VLM_MODEL:-gpt-4o}
     stdin_open: true
     tty: true
-
-  pdf-web:
-    image: smile9493/pdf-mcp:latest-web
-    container_name: pdf-web
-    restart: unless-stopped
-    ports:
-      - "80:80"
-    depends_on:
-      - pdf-mcp
 ```
 
 ### 方式二：二进制文件
@@ -322,6 +320,12 @@ extraction_method: pdfium
 | `VLM_TIMEOUT_SECS`    | 请求超时      | `30`                                         |
 | `VLM_MAX_CONCURRENCY` | 最大并发      | `5`                                          |
 | `PDFIUM_LIB_PATH`     | Pdfium库路径 | -                                            |
+| `DASHBOARD_PORT`      | Dashboard端口 | `8000`                                       |
+| `DASHBOARD_WEB_DIR`   | 前端静态文件目录 | `./web/dist`                                  |
+| `STORAGE_TYPE`        | 存储类型      | `local`                                       |
+| `STORAGE_LOCAL_DIR`   | 本地存储目录   | `./data`                                      |
+| `CACHE_ENABLED`       | 缓存开关      | `true`                                        |
+| `CACHE_MAX_SIZE`      | 缓存上限      | `1000`                                        |
 
 ***
 
@@ -372,21 +376,43 @@ pdf-module-rs/
 │   │   ├── wiki.rs           # Wiki自动化 ⭐
 │   │   └── engine/           # Pdfium引擎
 │   ├── pdf-mcp/              # MCP stdio 入口
+│   ├── pdf-dashboard/        # Dashboard Web 服务 ⭐
 │   └── vlm-visual-gateway/   # VLM条件升级
 
 web/
 ├── src/
 │   ├── views/                # Vue组件
+│   ├── composables/          # 组合式函数
 │   └── locales/              # 国际化
 
-docker/
-├── Dockerfile.mcp            # MCP服务器镜像
-└── Dockerfile.ci             # Web前端镜像
+Dockerfile                    # 统一构建镜像 (前端+后端)
+docker-compose.yml            # 编排配置
 ```
 
 ***
 
 ## 📝 版本历史
+
+### v0.1.1 - Dashboard集成 (2026-04-30)
+
+**新增功能**:
+
+- ✨ Dashboard Web 服务 (pdf-dashboard)
+- ✨ 统一 Docker 镜像 (前端+后端+MCP)
+- ✨ 深色模式 (Slate 色系)
+
+**界面优化**:
+
+- 🎨 统一深色模式 Slate 色系
+- 🎨 12列栅格布局 (5:7 输入输出比)
+- 🎨 精简顶部导航栏
+- 🎨 左侧栏紧凑布局
+
+**Bug修复**:
+
+- 🐛 仪表盘工具数量显示不准确
+- 🐛 左侧栏底部空白区域
+- 🐛 MCP工具页统计与仪表盘重合
 
 ### v0.3.0 - 宗师级重构 (2026-04-30)
 
