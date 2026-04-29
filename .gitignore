@@ -132,6 +132,10 @@ node_modules/
 .arts/
 .codeartsdoer/
 
+# ==================== C/C++ Headers ====================
+# pdfium C headers (not tracked, avoids GitHub Linguist stat inflation)
+include/
+
 # ==================== Reference Projects ====================
 # unstract is a reference project, not part of our codebase
 unstract/
