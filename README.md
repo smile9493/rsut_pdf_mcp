@@ -94,9 +94,9 @@
 
 ## 🚀 快速开始
 
-### ⚡ 方式一：一键安装（最简单）
+### ⚡ 方式一：一键安装（推荐）
 
-**新服务器从零开始，一行命令安装**：
+**从 GitHub Releases 下载预编译二进制，无需安装 Rust/Node.js**：
 
 ```bash
 # 使用 wget
@@ -112,88 +112,32 @@ curl -fsSL https://raw.githubusercontent.com/smile9493/rsut_pdf_mcp/main/install
 /opt/pdf-module/pdf-mcp-cli config
 
 # 2. 启动服务
-/opt/pdf-module/pdf-mcp-cli start --web
+/opt/pdf-module/pdf-mcp-cli dashboard
 
 # 3. 访问 Web 界面
-# http://localhost:8080
+# http://localhost:8000
 ```
 
 **一键安装包含**：
-- ✅ 自动检测操作系统
-- ✅ 安装依赖
-- ✅ 安装 Rust 和 Node.js
-- ✅ 克隆并构建项目
+- ✅ 自动检测操作系统和架构
+- ✅ 下载预编译二进制文件
+- ✅ 下载 Web Dashboard 前端
 - ✅ 创建配置文件
 - ✅ 创建 CLI 快捷方式
+- ✅ 创建 systemd 服务（可选）
 
 ***
 
-### 📦 方式二：CLI配置管理工具（推荐）
+### 📦 方式二：CLI配置管理工具
 
-**一键配置和管理**：
-
+**交互式配置**：
 ```bash
-# 下载CLI工具
-cd /opt/pdf-module
-git clone https://github.com/smile9493/rsut_pdf_mcp.git
-cd rsut_pdf_mcp/pdf-mcp-installer
+cd /opt/pdf-module/pdf-mcp-installer
 cargo build --release
-
-# 运行交互式配置
 ./target/release/pdf-mcp interactive
 ```
 
-**CLI功能**：
-
-- ✅ 初始化配置
-- ✅ 配置 GLM API（交互式）
-- ✅ 查看服务端配置状态
-- ✅ 生成客户端配置
-- ✅ 启动/停止服务
-- ✅ 查看日志
-
-**命令行使用**：
-
-```bash
-# 初始化配置
-./pdf-mcp init
-
-# 配置API Key
-./pdf-mcp config --key YOUR_API_KEY
-
-# 查看状态
-./pdf-mcp status
-
-# 启动服务（Dashboard API + Web前端）
-./pdf-mcp start --web
-
-# 停止服务
-./pdf-mcp stop
-
-# 生成客户端配置
-./pdf-mcp generate-config
-```
-
-**服务架构**：
-
-```
-┌─────────────────────────────────────────┐
-│  Web 前端 (端口 8080)                    │
-│  http://localhost:8080                  │
-│  - 提供 Web 界面                         │
-│  - 用户交互界面                          │
-└──────────────┬──────────────────────────┘
-               │ 调用 API
-               ↓
-┌─────────────────────────────────────────┐
-│  Dashboard API (端口 8000)              │
-│  http://localhost:8000/api/*            │
-│  - /api/health - 健康检查               │
-│  - /api/metrics - 性能指标              │
-│  - /api/status - 系统状态               │
-│  - /api/logs - 日志查询                 │
-└─────────────────────────────────────────┘
-```
+详细说明见 [pdf-mcp-installer/README.md](pdf-mcp-installer/README.md)
 
 ***
 
@@ -546,52 +490,6 @@ web/
 Dockerfile                    # 统一构建镜像 (前端+后端)
 docker-compose.yml            # 编排配置
 ```
-
-***
-
-## 📝 版本历史
-
-### v0.1.1 - Dashboard集成 (2026-04-30)
-
-**新增功能**:
-
-- ✨ Dashboard Web 服务 (pdf-dashboard)
-- ✨ 统一 Docker 镜像 (前端+后端+MCP)
-- ✨ 深色模式 (Slate 色系)
-
-**界面优化**:
-
-- 🎨 统一深色模式 Slate 色系
-- 🎨 12列栅格布局 (5:7 输入输出比)
-- 🎨 精简顶部导航栏
-- 🎨 左侧栏紧凑布局
-
-**Bug修复**:
-
-- 🐛 仪表盘工具数量显示不准确
-- 🐛 左侧栏底部空白区域
-- 🐛 MCP工具页统计与仪表盘重合
-
-### v0.3.0 - 宗师级重构 (2026-04-30)
-
-**新增功能**:
-
-- ✨ mmap零拷贝加载器
-- ✨ 智能质量探测系统
-- ✨ Wiki自动化系统
-- ✨ 双模态MCP工具
-
-**性能优化**:
-
-- 🚀 物理顺应：mmap + Arena
-- 🚀 FFI防波堤：catch\_unwind
-- 🚀 启动时间：< 1ms
-
-**架构改进**:
-
-- 🏗️ 三级存储结构
-- 🏗️ 自动索引生成
-- 🏗️ 双模态工具集
 
 ***
 

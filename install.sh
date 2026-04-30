@@ -10,8 +10,9 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 INSTALL_DIR="/opt/pdf-module"
-REPO_URL="https://github.com/smile9493/rsut_pdf_mcp"
-CLI_DIR="$INSTALL_DIR/pdf-mcp-installer"
+REPO_OWNER="smile9493"
+REPO_NAME="rsut_pdf_mcp"
+API_URL="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest"
 
 print_banner() {
     echo -e "${CYAN}"
@@ -25,7 +26,7 @@ print_banner() {
 EOF
     echo -e "${NC}"
     echo -e "${GREEN}PDF Module MCP - 一键安装脚本${NC}"
-    echo -e "${BLUE}版本: latest${NC}"
+    echo -e "${BLUE}版本: latest (预编译二进制)${NC}"
     echo ""
 }
 
@@ -37,129 +38,129 @@ check_root() {
     fi
 }
 
-detect_os() {
-    if [[ -f /etc/os-release ]]; then
-        . /etc/os-release
-        OS=$ID
-        VER=$VERSION_ID
-    elif type lsb_release >/dev/null 2>&1; then
-        OS=$(lsb_release -si)
-        VER=$(lsb_release -sr)
-    else
-        OS=$(uname -s)
-        VER=$(uname -r)
-    fi
-    
-    echo -e "${GREEN}检测到操作系统: $OS $VER${NC}"
+detect_architecture() {
+    ARCH=$(uname -m)
+    OS=$(uname -s)
     
     case $OS in
-        ubuntu|debian)
-            PKG_MANAGER="apt"
-            PKG_UPDATE="apt-get update"
-            PKG_INSTALL="apt-get install -y"
+        Linux)
+            case $ARCH in
+                x86_64)
+                    BINARY_NAME="pdf-mcp-linux-x64.tar.gz"
+                    ;;
+                aarch64|arm64)
+                    BINARY_NAME="pdf-mcp-linux-arm64.tar.gz"
+                    ;;
+                *)
+                    echo -e "${RED}不支持的架构: $ARCH${NC}"
+                    exit 1
+                    ;;
+            esac
             ;;
-        centos|rhel|fedora)
-            PKG_MANAGER="yum"
-            PKG_UPDATE="yum makecache"
-            PKG_INSTALL="yum install -y"
+        Darwin)
+            case $ARCH in
+                x86_64)
+                    BINARY_NAME="pdf-mcp-macos-x64.tar.gz"
+                    ;;
+                arm64)
+                    BINARY_NAME="pdf-mcp-macos-arm64.tar.gz"
+                    ;;
+                *)
+                    echo -e "${RED}不支持的架构: $ARCH${NC}"
+                    exit 1
+                    ;;
+            esac
             ;;
         *)
-            echo -e "${YELLOW}未知的包管理器，将尝试使用 apt${NC}"
-            PKG_MANAGER="apt"
-            PKG_UPDATE="apt-get update"
-            PKG_INSTALL="apt-get install -y"
+            echo -e "${RED}不支持的操作系统: $OS${NC}"
+            exit 1
             ;;
     esac
+    
+    echo -e "${GREEN}检测到系统: $OS $ARCH${NC}"
+    echo -e "${GREEN}二进制包: $BINARY_NAME${NC}"
 }
 
-install_dependencies() {
-    echo -e "${YELLOW}[1/6] 安装依赖...${NC}"
-    
-    $PKG_UPDATE
-    $PKG_INSTALL curl wget git build-essential pkg-config libssl-dev
-    
-    echo -e "${GREEN}✓ 依赖安装完成${NC}"
-}
-
-install_rust() {
-    echo -e "${YELLOW}[2/6] 检查 Rust...${NC}"
-    
-    if ! command -v rustc &> /dev/null; then
-        echo -e "${YELLOW}安装 Rust...${NC}"
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-        source "$HOME/.cargo/env"
-        echo -e "${GREEN}✓ Rust 安装完成${NC}"
-    else
-        echo -e "${GREEN}✓ Rust 已安装: $(rustc --version)${NC}"
+install_curl() {
+    if ! command -v curl &> /dev/null; then
+        echo -e "${YELLOW}安装 curl...${NC}"
+        if command -v apt-get &> /dev/null; then
+            apt-get update && apt-get install -y curl
+        elif command -v yum &> /dev/null; then
+            yum install -y curl
+        elif command -v dnf &> /dev/null; then
+            dnf install -y curl
+        fi
     fi
 }
 
-install_nodejs() {
-    echo -e "${YELLOW}[3/6] 检查 Node.js...${NC}"
+get_latest_version() {
+    echo -e "${YELLOW}[1/6] 获取最新版本...${NC}"
     
-    if ! command -v node &> /dev/null; then
-        echo -e "${YELLOW}安装 Node.js 20.x...${NC}"
-        curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-        $PKG_INSTALL nodejs
-        echo -e "${GREEN}✓ Node.js 安装完成: $(node --version)${NC}"
-    else
-        echo -e "${GREEN}✓ Node.js 已安装: $(node --version)${NC}"
-    fi
-}
-
-clone_repository() {
-    echo -e "${YELLOW}[4/6] 克隆项目...${NC}"
+    VERSION=$(curl -s $API_URL | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
     
-    if [[ -d "$INSTALL_DIR" ]]; then
-        echo -e "${YELLOW}目录已存在，更新代码...${NC}"
-        cd "$INSTALL_DIR"
-        git pull
-    else
-        git clone "$REPO_URL" "$INSTALL_DIR"
+    if [[ -z "$VERSION" ]]; then
+        echo -e "${RED}无法获取最新版本，使用默认版本 v0.1.1${NC}"
+        VERSION="v0.1.1"
     fi
     
-    echo -e "${GREEN}✓ 项目克隆完成${NC}"
+    echo -e "${GREEN}最新版本: $VERSION${NC}"
 }
 
-build_project() {
-    echo -e "${YELLOW}[5/6] 构建项目...${NC}"
+download_binaries() {
+    echo -e "${YELLOW}[2/6] 下载预编译二进制...${NC}"
+    
+    mkdir -p "$INSTALL_DIR"
+    cd "$INSTALL_DIR"
+    
+    DOWNLOAD_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${VERSION}/${BINARY_NAME}"
+    echo -e "${CYAN}  下载: $BINARY_NAME${NC}"
+    curl -fsSL -o "pdf-mcp.tar.gz" "$DOWNLOAD_URL"
+    
+    echo -e "${CYAN}  下载: web-dist.tar.gz${NC}"
+    curl -fsSL -o "web-dist.tar.gz" "https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${VERSION}/web-dist.tar.gz"
+    
+    echo -e "${GREEN}✓ 二进制下载完成${NC}"
+}
+
+extract_binaries() {
+    echo -e "${YELLOW}[3/6] 解压文件...${NC}"
     
     cd "$INSTALL_DIR"
     
-    # 构建 CLI 工具
-    echo -e "${CYAN}  构建 CLI 工具...${NC}"
-    cd "$CLI_DIR"
-    cargo build --release
+    if [[ -f "pdf-mcp.tar.gz" ]]; then
+        tar -xzf pdf-mcp.tar.gz
+        rm pdf-mcp.tar.gz
+        echo -e "${GREEN}✓ pdf-mcp 解压完成${NC}"
+    fi
     
-    # 构建 Dashboard
-    echo -e "${CYAN}  构建 Dashboard 服务...${NC}"
-    cd "$INSTALL_DIR/pdf-module-rs"
-    cargo build --release --bin pdf-mcp --bin pdf-dashboard
+    if [[ -f "web-dist.tar.gz" ]]; then
+        mkdir -p web
+        tar -xzf web-dist.tar.gz -C web
+        rm web-dist.tar.gz
+        echo -e "${GREEN}✓ Web 前端解压完成${NC}"
+    fi
     
-    # 构建 Web 前端
-    echo -e "${CYAN}  构建 Web 前端...${NC}"
-    cd "$INSTALL_DIR/web"
-    npm install
-    npm run build
+    chmod +x "$INSTALL_DIR/pdf-mcp" 2>/dev/null || true
     
-    # 复制二进制文件
-    cp "$INSTALL_DIR/pdf-module-rs/target/release/pdf-mcp" "$INSTALL_DIR/"
-    cp "$INSTALL_DIR/pdf-module-rs/target/release/pdf-dashboard" "$INSTALL_DIR/"
-    chmod +x "$INSTALL_DIR/pdf-mcp" "$INSTALL_DIR/pdf-dashboard"
-    
-    echo -e "${GREEN}✓ 项目构建完成${NC}"
+    echo -e "${GREEN}✓ 文件解压完成${NC}"
 }
 
-setup_config() {
-    echo -e "${YELLOW}[6/6] 配置环境...${NC}"
+setup_directories() {
+    echo -e "${YELLOW}[4/6] 创建目录结构...${NC}"
     
-    # 创建目录
     mkdir -p "$INSTALL_DIR/logs"
     mkdir -p "$INSTALL_DIR/wiki/raw"
     mkdir -p "$INSTALL_DIR/wiki/wiki"
     mkdir -p "$INSTALL_DIR/wiki/scheme"
+    mkdir -p "$INSTALL_DIR/data"
     
-    # 创建配置文件
+    echo -e "${GREEN}✓ 目录结构创建完成${NC}"
+}
+
+setup_config() {
+    echo -e "${YELLOW}[5/6] 配置环境...${NC}"
+    
     ENV_FILE="$INSTALL_DIR/.env.local"
     if [[ ! -f "$ENV_FILE" ]]; then
         cat > "$ENV_FILE" << 'EOF'
@@ -172,6 +173,11 @@ VLM_ENDPOINT=https://open.bigmodel.cn/api/paas/v4/chat/completions
 
 # Dashboard 配置
 DASHBOARD_PORT=8000
+DASHBOARD_WEB_DIR=/opt/pdf-module/web/dist
+
+# 存储配置
+STORAGE_TYPE=local
+STORAGE_LOCAL_DIR=/opt/pdf-module/data
 
 # 日志配置
 RUST_LOG=info
@@ -181,16 +187,45 @@ EOF
         echo -e "${GREEN}✓ 配置文件已存在${NC}"
     fi
     
-    # 创建 CLI 快捷方式
     CLI_BIN="$INSTALL_DIR/pdf-mcp-cli"
     cat > "$CLI_BIN" << EOF
 #!/bin/bash
-cd $CLI_DIR
-./target/release/pdf-mcp "\$@"
+exec "$INSTALL_DIR/pdf-mcp" "\$@"
 EOF
     chmod +x "$CLI_BIN"
     
-    echo -e "${GREEN}✓ 环境配置完成${NC}"
+    echo -e "${GREEN}✓ CLI 快捷方式已创建${NC}"
+}
+
+create_service() {
+    echo -e "${YELLOW}[6/6] 创建 systemd 服务...${NC}"
+    
+    if command -v systemctl &> /dev/null; then
+        SERVICE_FILE="/etc/systemd/system/pdf-mcp.service"
+        cat > "$SERVICE_FILE" << EOF
+[Unit]
+Description=PDF Module MCP Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$INSTALL_DIR
+EnvironmentFile=$INSTALL_DIR/.env.local
+ExecStart=$INSTALL_DIR/pdf-mcp dashboard --port \${DASHBOARD_PORT:-8000}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        
+        systemctl daemon-reload
+        systemctl enable pdf-mcp
+        echo -e "${GREEN}✓ systemd 服务已创建并启用${NC}"
+    else
+        echo -e "${YELLOW}  systemctl 未找到，跳过服务创建${NC}"
+    fi
 }
 
 print_success() {
@@ -202,34 +237,32 @@ print_success() {
     echo -e "${CYAN}快速开始:${NC}"
     echo ""
     echo -e "  ${YELLOW}1. 配置 API Key:${NC}"
-    echo "     $CLI_BIN config"
+    echo "     $INSTALL_DIR/pdf-mcp-cli config"
     echo ""
-    echo -e "  ${YELLOW}2. 查看状态:${NC}"
-    echo "     $CLI_BIN status"
+    echo -e "  ${YELLOW}2. 启动 Dashboard:${NC}"
+    echo "     $INSTALL_DIR/pdf-mcp-cli dashboard"
     echo ""
-    echo -e "  ${YELLOW}3. 启动服务:${NC}"
-    echo "     $CLI_BIN start --web"
-    echo ""
-    echo -e "  ${YELLOW}4. 访问 Web 界面:${NC}"
-    echo "     http://localhost:8080"
+    echo -e "  ${YELLOW}3. 访问 Web 界面:${NC}"
+    echo "     http://localhost:8000"
     echo ""
     echo -e "${BLUE}配置文件: $INSTALL_DIR/.env.local${NC}"
     echo -e "${BLUE}安装目录: $INSTALL_DIR${NC}"
     echo ""
-    echo -e "${YELLOW}提示: 请先配置 VLM_API_KEY${NC}"
+    echo -e "${YELLOW}提示: 请编辑配置文件设置 VLM_API_KEY${NC}"
     echo ""
 }
 
 main() {
     print_banner
     check_root
-    detect_os
-    install_dependencies
-    install_rust
-    install_nodejs
-    clone_repository
-    build_project
+    install_curl
+    detect_architecture
+    get_latest_version
+    download_binaries
+    extract_binaries
+    setup_directories
     setup_config
+    create_service
     print_success
 }
 
