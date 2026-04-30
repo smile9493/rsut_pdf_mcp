@@ -5,16 +5,22 @@ on:
     branches: [main]
     paths:
       - 'pdf-module-rs/**'
+      - 'pdf-mcp-installer/**'
       - 'web/**'
       - '.github/workflows/build.yml'
+      - 'install.sh'
+      - 'deploy.sh'
     tags:
       - 'v*'
   pull_request:
     branches: [main]
     paths:
       - 'pdf-module-rs/**'
+      - 'pdf-mcp-installer/**'
       - 'web/**'
       - '.github/workflows/build.yml'
+      - 'install.sh'
+      - 'deploy.sh'
   workflow_dispatch:
 
 permissions:
@@ -44,6 +50,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             pdf-module-rs/target
+            pdf-mcp-installer/target
           key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Clean up advisory database from cache
@@ -51,19 +58,29 @@ jobs:
           rm -rf ~/.cargo/advisory-db
           rm -rf ~/.cargo/git/checkouts/advisory-db
 
-      - name: Run tests
+      - name: Run tests (pdf-module-rs)
         run: |
           cd pdf-module-rs
           cargo test --all-targets --all-features
 
-      - name: Run clippy
+      - name: Run clippy (pdf-module-rs)
         run: |
           cd pdf-module-rs
           cargo clippy --all-targets -- -D warnings
 
-      - name: Check formatting
+      - name: Run clippy (pdf-mcp-installer)
+        run: |
+          cd pdf-mcp-installer
+          cargo clippy --all-targets -- -D warnings
+
+      - name: Check formatting (pdf-module-rs)
         run: |
           cd pdf-module-rs
+          cargo fmt --all -- --check
+
+      - name: Check formatting (pdf-mcp-installer)
+        run: |
+          cd pdf-mcp-installer
           cargo fmt --all -- --check
 
       - name: Check documentation
@@ -237,6 +254,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             pdf-module-rs/target
+            pdf-mcp-installer/target
           key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Setup environment for cross-compilation

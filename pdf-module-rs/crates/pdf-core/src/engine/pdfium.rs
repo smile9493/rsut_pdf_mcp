@@ -1,7 +1,9 @@
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use std::env;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
+use std::sync::Arc;
 
 use crate::dto::{
     ExtractOptions, FileInfo, PageMetadata, StructuredExtractionResult, TextExtractionResult,
@@ -18,18 +20,30 @@ struct StructuredParts {
     pages: Vec<PageMetadata>,
 }
 
+static PDFIUM: Lazy<Option<Arc<pdfium_render::prelude::Pdfium>>> = Lazy::new(|| {
+    if let Ok(path) = env::var("PDFIUM_LIB_PATH") {
+        if Path::new(&path).exists() {
+            if let Ok(bindings) = pdfium_render::prelude::Pdfium::bind_to_library(&path) {
+                return Some(Arc::new(pdfium_render::prelude::Pdfium::new(bindings)));
+            }
+        }
+    }
+    pdfium_render::prelude::Pdfium::bind_to_system_library()
+        .ok()
+        .map(|b| Arc::new(pdfium_render::prelude::Pdfium::new(b)))
+});
+
 impl PdfiumEngine {
     pub fn new() -> PdfResult<Self> {
         Ok(Self)
     }
 
-    fn get_pdfium_path() -> Option<String> {
-        if let Ok(path) = env::var("PDFIUM_LIB_PATH") {
-            if Path::new(&path).exists() {
-                return Some(path);
-            }
-        }
-        None
+    pub fn get_pdfium() -> PdfResult<Arc<pdfium_render::prelude::Pdfium>> {
+        PDFIUM.clone().ok_or_else(|| {
+            PdfModuleError::Extraction(
+                "Failed to load pdfium. Set PDFIUM_LIB_PATH environment variable.".to_string(),
+            )
+        })
     }
 
     pub fn extract_text_from_mmap(loader: &MmapPdfLoader) -> PdfResult<String> {
@@ -61,24 +75,7 @@ impl PdfiumEngine {
     pub fn safe_extract_text(data: &[u8]) -> PdfResult<String> {
         use pdfium_render::prelude::*;
 
-        let pdfium = match Self::get_pdfium_path() {
-            Some(path) => Pdfium::bind_to_library(&path)
-                .map(Pdfium::new)
-                .map_err(|e| {
-                    PdfModuleError::Extraction(format!(
-                        "Failed to load pdfium from {}: {}",
-                        path, e
-                    ))
-                })?,
-            None => Pdfium::bind_to_system_library()
-                .map(Pdfium::new)
-                .map_err(|e| {
-                    PdfModuleError::Extraction(format!(
-                        "Failed to load pdfium: {}. Set PDFIUM_LIB_PATH environment variable.",
-                        e
-                    ))
-                })?,
-        };
+        let pdfium = Self::get_pdfium()?;
 
         catch_unwind(AssertUnwindSafe(|| {
             let document = pdfium.load_pdf_from_byte_slice(data, None)?;
@@ -99,24 +96,7 @@ impl PdfiumEngine {
     fn safe_extract_structured_parts(data: &[u8]) -> PdfResult<StructuredParts> {
         use pdfium_render::prelude::*;
 
-        let pdfium = match Self::get_pdfium_path() {
-            Some(path) => Pdfium::bind_to_library(&path)
-                .map(Pdfium::new)
-                .map_err(|e| {
-                    PdfModuleError::Extraction(format!(
-                        "Failed to load pdfium from {}: {}",
-                        path, e
-                    ))
-                })?,
-            None => Pdfium::bind_to_system_library()
-                .map(Pdfium::new)
-                .map_err(|e| {
-                    PdfModuleError::Extraction(format!(
-                        "Failed to load pdfium: {}. Set PDFIUM_LIB_PATH environment variable.",
-                        e
-                    ))
-                })?,
-        };
+        let pdfium = Self::get_pdfium()?;
 
         catch_unwind(AssertUnwindSafe(|| {
             let document = pdfium.load_pdf_from_byte_slice(data, None)?;
@@ -155,24 +135,7 @@ impl PdfiumEngine {
     pub fn safe_get_page_count(data: &[u8]) -> PdfResult<u32> {
         use pdfium_render::prelude::*;
 
-        let pdfium = match Self::get_pdfium_path() {
-            Some(path) => Pdfium::bind_to_library(&path)
-                .map(Pdfium::new)
-                .map_err(|e| {
-                    PdfModuleError::Extraction(format!(
-                        "Failed to load pdfium from {}: {}",
-                        path, e
-                    ))
-                })?,
-            None => Pdfium::bind_to_system_library()
-                .map(Pdfium::new)
-                .map_err(|e| {
-                    PdfModuleError::Extraction(format!(
-                        "Failed to load pdfium: {}. Set PDFIUM_LIB_PATH environment variable.",
-                        e
-                    ))
-                })?,
-        };
+        let pdfium = Self::get_pdfium()?;
 
         catch_unwind(AssertUnwindSafe(|| {
             let document = pdfium.load_pdf_from_byte_slice(data, None)?;

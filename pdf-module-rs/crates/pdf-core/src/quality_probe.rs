@@ -1,12 +1,8 @@
 use std::panic::catch_unwind;
 
-use once_cell::sync::Lazy;
-use pdfium_render::prelude::*;
-
+use crate::engine::PdfiumEngine;
 use crate::error::{PdfModuleError, PdfResult};
 use crate::mmap_loader::PdfQuality;
-
-static PDFIUM: Lazy<Pdfium> = Lazy::new(Pdfium::default);
 
 const CONFIDENCE_HIGH: f64 = 0.95;
 const CONFIDENCE_MEDIUM: f64 = 0.90;
@@ -140,40 +136,46 @@ impl QualityProbe {
     }
 
     fn probe_text_density_via_pdfium(data: &[u8]) -> PdfResult<f64> {
-        let result: Result<f64, PdfModuleError> = catch_unwind(|| {
-            let document = match PDFIUM.load_pdf_from_byte_slice(data, None) {
-                Ok(doc) => doc,
-                Err(_) => return Ok(0.0f64),
-            };
+        let pdfium = match PdfiumEngine::get_pdfium() {
+            Ok(p) => p,
+            Err(_) => return Ok(0.0f64),
+        };
 
-            let pages = document.pages();
-            if pages.is_empty() {
-                return Ok(0.0f64);
-            }
+        let result: Result<f64, PdfModuleError> =
+            catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let document = match pdfium.load_pdf_from_byte_slice(data, None) {
+                    Ok(doc) => doc,
+                    Err(_) => return Ok(0.0f64),
+                };
 
-            let sample_pages = 3.min(pages.len());
-            let mut total_chars = 0usize;
-            let mut total_area = 0.0f64;
-
-            for i in 0..sample_pages {
-                if let Ok(page) = pages.get(i) {
-                    if let Ok(text) = page.text() {
-                        total_chars += text.all().chars().count();
-                    }
-                    let width = page.width().value as f64;
-                    let height = page.height().value as f64;
-                    total_area += width * height;
+                let pages = document.pages();
+                if pages.is_empty() {
+                    return Ok(0.0f64);
                 }
-            }
 
-            if total_area > 0.0 {
-                let density = (total_chars as f64) / (total_area / 1000.0);
-                Ok((density / 10.0).min(1.0))
-            } else {
-                Ok(0.0f64)
-            }
-        })
-        .map_err(|_| PdfModuleError::Extraction("Pdfium panic in quality probe".to_string()))?;
+                let sample_pages = 3.min(pages.len());
+                let mut total_chars = 0usize;
+                let mut total_area = 0.0f64;
+
+                for i in 0..sample_pages {
+                    if let Ok(page) = pages.get(i) {
+                        if let Ok(text) = page.text() {
+                            total_chars += text.all().chars().count();
+                        }
+                        let width = page.width().value as f64;
+                        let height = page.height().value as f64;
+                        total_area += width * height;
+                    }
+                }
+
+                if total_area > 0.0 {
+                    let density = (total_chars as f64) / (total_area / 1000.0);
+                    Ok((density / 10.0).min(1.0))
+                } else {
+                    Ok(0.0f64)
+                }
+            }))
+            .map_err(|_| PdfModuleError::Extraction("Pdfium panic in quality probe".to_string()))?;
 
         result
     }

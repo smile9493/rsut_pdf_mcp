@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use once_cell::sync::Lazy;
+use regex::Regex;
 use reqwest::Client;
 use tokio::sync::{broadcast, Semaphore};
 use tokio::time::timeout;
@@ -13,6 +15,16 @@ use crate::types::{
     ChatCompletionResponse, GlmOcrResponse, LayoutResult, PayloadMetadata, Region, RegionType,
     VlmConfig, VlmPayload,
 };
+
+static COORD_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\[\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\]")
+        .expect("Invalid coordinate regex pattern")
+});
+
+static REGION_TYPE_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)(title|body|table|image|caption|paragraph|heading)")
+        .expect("Invalid region type regex pattern")
+});
 
 /// VLM Gateway — the core component that dispatches visual perception
 /// requests to a remote VLM API and returns layout understanding results.
@@ -494,28 +506,21 @@ impl VlmGateway {
     fn parse_layout_from_text(&self, text: &str) -> Vec<Region> {
         let mut regions = Vec::new();
 
-        let coord_regex = regex::Regex::new(r"\[\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\]").ok();
-        let region_type_regex =
-            regex::Regex::new(r"(?i)(title|body|table|image|caption|paragraph|heading)").ok();
-
-        for cap in coord_regex
-            .as_ref()
-            .map(|r| r.captures_iter(text))
-            .into_iter()
-            .flatten()
-        {
+        for cap in COORD_REGEX.captures_iter(text) {
             let x = cap[1].parse::<f32>().unwrap_or(0.0);
             let y = cap[2].parse::<f32>().unwrap_or(0.0);
             let w = cap[3].parse::<f32>().unwrap_or(0.0);
             let h = cap[4].parse::<f32>().unwrap_or(0.0);
 
-            let context_start = (cap.get(0).unwrap().start() as i64 - 50).max(0) as usize;
-            let context_end = (cap.get(0).unwrap().end() + 50).min(text.len());
+            let context_start = (cap.get(0).expect("capture group 0 always exists").start() as i64
+                - 50)
+                .max(0) as usize;
+            let context_end =
+                (cap.get(0).expect("capture group 0 always exists").end() + 50).min(text.len());
             let context = &text[context_start..context_end];
 
-            let region_type = region_type_regex
-                .as_ref()
-                .and_then(|r| r.captures(context))
+            let region_type = REGION_TYPE_REGEX
+                .captures(context)
                 .and_then(|c| c.get(1))
                 .map(|m| m.as_str().to_lowercase())
                 .map(|s| match s.as_str() {

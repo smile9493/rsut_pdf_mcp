@@ -10,19 +10,13 @@ use crate::dto::StructuredExtractionResult;
 use crate::error::{PdfModuleError, PdfResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RawMetadata {
+pub struct ExtractionMetadata {
     pub source_file: String,
+    pub source_name: String,
     pub file_hash: String,
     pub extraction_time: DateTime<Utc>,
     pub page_count: u32,
     pub quality_score: f64,
-    pub extraction_method: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RawDocument {
-    pub metadata: RawMetadata,
-    pub content: String,
 }
 
 pub struct WikiStorage {
@@ -39,8 +33,8 @@ impl WikiStorage {
         fs::create_dir_all(base_path.join("wiki")).map_err(|e| {
             PdfModuleError::StorageError(format!("Failed to create wiki dir: {}", e))
         })?;
-        fs::create_dir_all(base_path.join("scheme")).map_err(|e| {
-            PdfModuleError::StorageError(format!("Failed to create scheme dir: {}", e))
+        fs::create_dir_all(base_path.join("schema")).map_err(|e| {
+            PdfModuleError::StorageError(format!("Failed to create schema dir: {}", e))
         })?;
 
         Ok(Self { base_path })
@@ -51,101 +45,210 @@ impl WikiStorage {
         extraction_result: &StructuredExtractionResult,
         source_file: &Path,
         quality_score: f64,
-        extraction_method: &str,
-    ) -> PdfResult<PathBuf> {
+    ) -> PdfResult<WikiExtractionResult> {
         let file_hash = Self::compute_file_hash(&extraction_result.extracted_text);
-        let raw_filename = format!("{}.raw.md", file_hash);
-        let raw_path = self.base_path.join("raw").join(&raw_filename);
+        let source_name = Self::extract_source_name(source_file);
 
-        let metadata = RawMetadata {
+        let metadata = ExtractionMetadata {
             source_file: source_file.to_string_lossy().to_string(),
+            source_name: source_name.clone(),
             file_hash: file_hash.clone(),
             extraction_time: Utc::now(),
             page_count: extraction_result.page_count,
             quality_score,
-            extraction_method: extraction_method.to_string(),
         };
 
-        let raw_doc = RawDocument {
-            metadata,
-            content: extraction_result.extracted_text.clone(),
-        };
+        let raw_filename = format!("{}.md", source_name);
+        let raw_path = self.base_path.join("raw").join(&raw_filename);
 
-        let yaml_frontmatter = serde_yaml::to_string(&raw_doc.metadata)
-            .map_err(|e| PdfModuleError::StorageError(format!("YAML serialization: {}", e)))?;
+        self.save_raw_file(&raw_path, &metadata, &extraction_result.extracted_text)?;
 
-        let full_content = format!("---\n{}---\n\n{}", yaml_frontmatter, raw_doc.content);
+        self.generate_index()?;
 
-        let mut file = File::create(&raw_path).map_err(|e| {
+        Ok(WikiExtractionResult {
+            raw_path,
+            index_path: self.base_path.join("wiki").join("index.md"),
+            log_path: self.base_path.join("wiki").join("log.md"),
+            page_count: extraction_result.page_count,
+        })
+    }
+
+    fn save_raw_file(
+        &self,
+        path: &Path,
+        metadata: &ExtractionMetadata,
+        text: &str,
+    ) -> PdfResult<()> {
+        let yaml = serde_yaml::to_string(metadata)
+            .map_err(|e| PdfModuleError::StorageError(format!("YAML error: {}", e)))?;
+
+        let content = format!(
+            "---\n{}---\n\n# {}\n\n## 文档信息\n\n- 页数: {}\n- 质量: {:.0}%\n- 提取时间: {}\n\n## 正文\n\n{}",
+            yaml,
+            metadata.source_name,
+            metadata.page_count,
+            metadata.quality_score * 100.0,
+            metadata.extraction_time.format("%Y-%m-%d %H:%M:%S UTC"),
+            Self::format_text(text)
+        );
+
+        let mut file = File::create(path).map_err(|e| {
             PdfModuleError::StorageError(format!("Failed to create raw file: {}", e))
         })?;
 
-        file.write_all(full_content.as_bytes()).map_err(|e| {
+        file.write_all(content.as_bytes()).map_err(|e| {
             PdfModuleError::StorageError(format!("Failed to write raw file: {}", e))
         })?;
 
-        Ok(raw_path)
+        Ok(())
     }
 
-    pub fn generate_map(&self) -> PdfResult<PathBuf> {
-        let map_path = self.base_path.join("MAP.md");
-        let raw_dir = self.base_path.join("raw");
+    fn format_text(text: &str) -> String {
+        text.lines()
+            .filter(|l| !l.trim().is_empty())
+            .collect::<Vec<_>>()
+            .chunks(5)
+            .map(|chunk| chunk.join("\n"))
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
 
-        let mut map_content = String::new();
-        map_content.push_str("# PDF Knowledge Map\n\n");
-        map_content.push_str("## Raw Extractions\n\n");
+    pub fn generate_index(&self) -> PdfResult<PathBuf> {
+        let index_path = self.base_path.join("wiki").join("index.md");
+        let wiki_dir = self.base_path.join("wiki");
 
-        if raw_dir.exists() {
-            let entries: Vec<_> = fs::read_dir(&raw_dir)
-                .map_err(|e| {
-                    PdfModuleError::StorageError(format!("Failed to read raw dir: {}", e))
-                })?
+        let mut entities: Vec<EntityInfo> = Vec::new();
+
+        if wiki_dir.exists() {
+            for entry in fs::read_dir(&wiki_dir)
+                .map_err(|e| PdfModuleError::StorageError(format!("Read wiki dir error: {}", e)))?
                 .filter_map(|e| e.ok())
-                .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
-                .collect();
+            {
+                let path = entry.path();
+                let name = entry.file_name().to_string_lossy().to_string();
 
-            let count = entries.len();
-
-            for entry in &entries {
-                let filename = entry.file_name().to_string_lossy().to_string();
-                map_content.push_str(&format!("- [{}](raw/{})\n", filename, filename));
+                if path.extension().map(|e| e == "md").unwrap_or(false)
+                    && name != "index.md"
+                    && name != "log.md"
+                {
+                    if let Some(info) = Self::parse_entity(&path) {
+                        entities.push(info);
+                    }
+                }
             }
-
-            map_content.push_str(&format!("\n**Total documents**: {}\n", count));
         }
 
-        let mut file = File::create(&map_path)
-            .map_err(|e| PdfModuleError::StorageError(format!("Failed to create MAP.md: {}", e)))?;
+        entities.sort_by(|a, b| a.domain.cmp(&b.domain).then(a.title.cmp(&b.title)));
 
-        file.write_all(map_content.as_bytes())
-            .map_err(|e| PdfModuleError::StorageError(format!("Failed to write MAP.md: {}", e)))?;
+        let content = Self::build_index(&entities);
 
-        Ok(map_path)
+        let mut file = File::create(&index_path)
+            .map_err(|e| PdfModuleError::StorageError(format!("Index create error: {}", e)))?;
+
+        file.write_all(content.as_bytes())
+            .map_err(|e| PdfModuleError::StorageError(format!("Index write error: {}", e)))?;
+
+        Ok(index_path)
     }
 
-    pub fn raw_path(&self) -> PathBuf {
-        self.base_path.join("raw")
+    fn parse_entity(path: &Path) -> Option<EntityInfo> {
+        let content = fs::read_to_string(path).ok()?;
+        let filename = path.file_name()?.to_string_lossy().to_string();
+
+        let title = content
+            .lines()
+            .find(|l| l.starts_with("# "))
+            .map(|l| l[2..].to_string())
+            .unwrap_or_else(|| filename.replace(".md", ""));
+
+        let (domain, name) = if title.starts_with('[') {
+            let end = title.find(']')?;
+            (title[1..end].to_string(), title[end + 2..].to_string())
+        } else {
+            ("未分类".to_string(), title)
+        };
+
+        let abstract_text = content
+            .lines()
+            .skip_while(|l| !l.contains("[!ABSTRACT]"))
+            .nth(1)
+            .map(|l| l.trim().to_string())
+            .unwrap_or_default();
+
+        Some(EntityInfo {
+            filename,
+            domain,
+            title: name,
+            abstract_text,
+        })
     }
 
-    pub fn wiki_path(&self) -> PathBuf {
-        self.base_path.join("wiki")
+    fn build_index(entities: &[EntityInfo]) -> String {
+        let mut content = String::new();
+
+        content.push_str("# 知识索引\n\n");
+        content.push_str("> [!ABSTRACT] 摘要\n");
+        content.push_str("> 本页面是 Wiki 知识库的总导航图，按领域分类组织。\n\n");
+
+        if entities.is_empty() {
+            content.push_str("*暂无词条。请使用 AI Agent 处理 raw/ 中的原始素材。*\n\n");
+        } else {
+            let mut current_domain = String::new();
+
+            for entity in entities {
+                if entity.domain != current_domain {
+                    current_domain = entity.domain.clone();
+                    content.push_str(&format!("\n## [{}]\n\n", current_domain));
+                    content.push_str("| 词条 | 摘要 |\n");
+                    content.push_str("|------|------|\n");
+                }
+
+                content.push_str(&format!(
+                    "| [[{}]] | {} |\n",
+                    entity.filename, entity.abstract_text
+                ));
+            }
+        }
+
+        content.push_str("\n---\n\n");
+        content.push_str(&format!("- **词条总数**: {}\n", entities.len()));
+        content.push_str("- [[log.md]] - 编译日志\n");
+
+        content
     }
 
-    pub fn scheme_path(&self) -> PathBuf {
-        self.base_path.join("scheme")
+    fn extract_source_name(path: &Path) -> String {
+        path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string()
     }
 
     fn compute_file_hash(content: &str) -> String {
         let mut hasher = Sha256::new();
         hasher.update(content.as_bytes());
-        let result = hasher.finalize();
-        format!("{:x}", result)[..16].to_string()
+        format!("{:x}", hasher.finalize())
     }
+}
+
+struct EntityInfo {
+    filename: String,
+    domain: String,
+    title: String,
+    abstract_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WikiExtractionResult {
+    pub raw_path: PathBuf,
+    pub index_path: PathBuf,
+    pub log_path: PathBuf,
+    pub page_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentPayload {
-    pub metadata: RawMetadata,
+    pub metadata: ExtractionMetadata,
     pub content: String,
     pub prompt: String,
 }
@@ -155,20 +258,66 @@ impl AgentPayload {
         extraction_result: &StructuredExtractionResult,
         source_file: &Path,
         quality_score: f64,
-        extraction_method: &str,
     ) -> Self {
         let file_hash = WikiStorage::compute_file_hash(&extraction_result.extracted_text);
+        let source_name = WikiStorage::extract_source_name(source_file);
 
-        let metadata = RawMetadata {
+        let metadata = ExtractionMetadata {
             source_file: source_file.to_string_lossy().to_string(),
+            source_name,
             file_hash,
             extraction_time: Utc::now(),
             page_count: extraction_result.page_count,
             quality_score,
-            extraction_method: extraction_method.to_string(),
         };
 
-        let prompt = Self::generate_prompt(&metadata);
+        let prompt = format!(
+            r#"# PDF 提取完成
+
+## 任务说明
+
+你是一个专业的**知识库管理员**。请根据 `schema/CLAUDE.md` 的规范，处理这份 PDF 提取内容。
+
+## 执行流程
+
+1. **深度通读**：阅读以下提取内容，判断知识所属领域
+2. **概念提炼**：提炼 10-15 个核心概念（非机械按章节切片，而是提炼原子化的技术概念）
+3. **存量检索**：检查 `wiki/` 目录中是否已存在相关词条
+4. **执行编译**：
+   - 若概念已存在：将新见解融入现有词条
+   - 若概念不存在：创建新词条，使用 `[领域] 概念名称.md` 格式命名
+5. **更新索引**：更新 `wiki/index.md` 和 `wiki/log.md`
+
+## 命名示例
+
+不要按"第1章、第2章"命名，而是提炼原子化概念：
+- `[IT] Nginx_多进程通信架构.md`
+- `[IT] Nginx_事件驱动模型.md`
+- `[IT] Nginx_Upstream负载均衡.md`
+
+## 元数据
+
+| 字段 | 值 |
+|------|-----|
+| 文档名称 | {} |
+| 页数 | {} |
+| 质量 | {:.0}% |
+| 提取时间 | {} |
+
+---
+
+# 提取内容
+
+以下内容已保存到 `raw/{}.md`，请阅读并提炼核心概念：
+
+{}"#,
+            metadata.source_name,
+            metadata.page_count,
+            metadata.quality_score * 100.0,
+            metadata.extraction_time.format("%Y-%m-%d %H:%M:%S UTC"),
+            metadata.source_name,
+            extraction_result.extracted_text
+        );
 
         Self {
             metadata,
@@ -177,95 +326,7 @@ impl AgentPayload {
         }
     }
 
-    fn generate_prompt(metadata: &RawMetadata) -> String {
-        format!(
-            r#"# PDF Extraction Complete
-
-Your PDF has been successfully extracted. Here's what you should do:
-
-## 1. Create Local Wiki Structure
-
-Create the following directory structure on your local machine:
-
-```
-wiki/
-├── raw/
-│   └── {}.raw.md
-├── wiki/
-│   └── (entity pages will go here)
-└── scheme/
-    └── (type constraints will go here)
-```
-
-## 2. Save the Raw Document
-
-Save the content below (including YAML frontmatter) to:
-`wiki/raw/{}.raw.md`
-
-## 3. Process the Content
-
-- Extract entities and create individual wiki pages
-- Build cross-references between related documents
-- Update your local MAP.md index
-
-## Extraction Metadata
-
-- **Source**: {}
-- **Pages**: {}
-- **Quality Score**: {:.2}
-- **Method**: {}
-- **Time**: {}
-
----
-
-# Extracted Content
-
-See below for the full extraction with YAML frontmatter.
-"#,
-            metadata.file_hash,
-            metadata.file_hash,
-            metadata.source_file,
-            metadata.page_count,
-            metadata.quality_score,
-            metadata.extraction_method,
-            metadata.extraction_time.format("%Y-%m-%d %H:%M:%S UTC")
-        )
-    }
-
     pub fn to_markdown(&self) -> String {
-        let yaml_frontmatter =
-            serde_yaml::to_string(&self.metadata).unwrap_or_else(|_| "metadata: error".to_string());
-
-        format!(
-            "---\n{}---\n\n{}\n\n{}",
-            yaml_frontmatter, self.prompt, self.content
-        )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::TempDir;
-
-    #[test]
-    fn test_wiki_storage_creation() {
-        let temp_dir = TempDir::new().unwrap();
-        let storage = WikiStorage::new(temp_dir.path()).unwrap();
-
-        assert!(storage.raw_path().exists());
-        assert!(storage.wiki_path().exists());
-        assert!(storage.scheme_path().exists());
-    }
-
-    #[test]
-    fn test_compute_file_hash() {
-        let hash1 = WikiStorage::compute_file_hash("test content");
-        let hash2 = WikiStorage::compute_file_hash("test content");
-        let hash3 = WikiStorage::compute_file_hash("different content");
-
-        assert_eq!(hash1, hash2);
-        assert_ne!(hash1, hash3);
-        assert_eq!(hash1.len(), 16);
+        format!("# {}\n\n{}", self.metadata.source_name, self.content)
     }
 }

@@ -43,7 +43,7 @@ impl ToolStats {
             files_processed: AtomicU64::new(0),
             start_time: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .expect("System time is before UNIX epoch")
                 .as_secs(),
             extract_text_calls: AtomicU64::new(0),
             extract_text_latency: AtomicU64::new(0),
@@ -170,18 +170,29 @@ pub async fn run_stdio(pipeline: Arc<McpPdfPipeline>) -> anyhow::Result<()> {
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let mut stdout_lock = stdout.lock();
+    let stdin_lock = stdin.lock();
 
-    for line in stdin.lock().lines() {
+    for line in stdin_lock.lines() {
         if SHUTDOWN_FLAG.load(Ordering::SeqCst) || shutdown_notifier.load(Ordering::SeqCst) {
             info!("Shutting down gracefully...");
             break;
         }
 
         let line = line?;
-        debug!("Received: {}", line);
+        info!(
+            "Received request: {}",
+            if line.len() > 100 {
+                &line[..100]
+            } else {
+                &line
+            }
+        );
 
-        let request: JsonRpcRequest = match serde_json::from_str(&line) {
-            Ok(req) => req,
+        let request: JsonRpcRequest = match serde_json::from_str::<JsonRpcRequest>(&line) {
+            Ok(req) => {
+                info!("Parsed request: method={}", req.method);
+                req
+            }
             Err(e) => {
                 error!("Failed to parse request: {}", e);
                 let response = JsonRpcResponse::error(None, JsonRpcError::parse_error());
@@ -191,7 +202,12 @@ pub async fn run_stdio(pipeline: Arc<McpPdfPipeline>) -> anyhow::Result<()> {
         };
 
         let response = handle_request(&pipeline, request).await;
-        write_response(&mut stdout_lock, &response)?;
+        if let Some(resp) = response {
+            info!("Sending response for id={:?}", resp.id);
+            write_response(&mut stdout_lock, &resp)?;
+        } else {
+            info!("No response needed (notification)");
+        }
     }
 
     SHUTDOWN_FLAG.store(true, Ordering::SeqCst);
@@ -213,13 +229,18 @@ fn write_response(
 pub async fn handle_request(
     pipeline: &Arc<McpPdfPipeline>,
     request: JsonRpcRequest,
-) -> JsonRpcResponse {
-    match request.method.as_str() {
+) -> Option<JsonRpcResponse> {
+    if request.method.starts_with("notifications/") {
+        return None;
+    }
+
+    let response = match request.method.as_str() {
         "initialize" => handle_initialize(&request),
         "tools/list" => handle_tools_list(&request),
         "tools/call" => handle_tools_call(pipeline, &request).await,
         _ => JsonRpcResponse::error(request.id, JsonRpcError::method_not_found(&request.method)),
-    }
+    };
+    Some(response)
 }
 
 fn handle_initialize(request: &JsonRpcRequest) -> JsonRpcResponse {
@@ -313,8 +334,7 @@ fn handle_tools_list(request: &JsonRpcRequest) -> JsonRpcResponse {
         },
         ToolDefinition {
             name: "extrude_to_server_wiki".to_string(),
-            description: "Extract PDF and save to server-side wiki with automatic indexing"
-                .to_string(),
+            description: "Extract PDF to server-side wiki (Karpathy paradigm). Rust engine only saves to raw/, AI Agent should read and create atomic wiki entries.".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -332,9 +352,7 @@ fn handle_tools_list(request: &JsonRpcRequest) -> JsonRpcResponse {
         },
         ToolDefinition {
             name: "extrude_to_agent_payload".to_string(),
-            description:
-                "Extract PDF and return markdown payload with prompt for local wiki creation"
-                    .to_string(),
+            description: "Extract PDF and return markdown payload with knowledge compilation instructions for AI Agent to create local wiki entries".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -518,7 +536,8 @@ async fn handle_search_keywords(
         .map(|kw| {
             let pattern = regex::escape(kw);
             let flags = if case_sensitive { "" } else { "(?i)" };
-            regex::Regex::new(&format!("{}{}", flags, pattern)).unwrap()
+            regex::Regex::new(&format!("{}{}", flags, pattern))
+                .expect("Regex pattern should be valid after escaping")
         })
         .collect();
 
@@ -677,20 +696,18 @@ async fn handle_extrude_to_server_wiki(
         .await
         .map_err(|e| anyhow::anyhow!("Extraction failed: {}", e))?;
 
-    let raw_path = storage
-        .save_raw(&result, file_path, 0.85, "pdfium")
-        .map_err(|e| anyhow::anyhow!("Failed to save raw document: {}", e))?;
-
-    let map_path = storage
-        .generate_map()
-        .map_err(|e| anyhow::anyhow!("Failed to generate MAP.md: {}", e))?;
+    let wiki_result = storage
+        .save_raw(&result, file_path, 0.85)
+        .map_err(|e| anyhow::anyhow!("Failed to save: {}", e))?;
 
     let response = serde_json::json!({
         "status": "success",
-        "raw_path": raw_path.to_string_lossy().to_string(),
-        "map_path": map_path.to_string_lossy().to_string(),
-        "page_count": result.page_count,
-        "message": format!("PDF extracted and saved to wiki at {:?}", wiki_base_path)
+        "raw_path": wiki_result.raw_path.to_string_lossy().to_string(),
+        "index_path": wiki_result.index_path.to_string_lossy().to_string(),
+        "log_path": wiki_result.log_path.to_string_lossy().to_string(),
+        "page_count": wiki_result.page_count,
+        "message": "PDF extracted to raw/. AI Agent should process and create wiki entries.",
+        "next_step": "Use extrude_to_agent_payload to get the prompt for AI Agent, or manually process raw/ content."
     });
 
     Ok(vec![Content::text(serde_json::to_string_pretty(
@@ -715,7 +732,7 @@ async fn handle_extrude_to_agent_payload(
         .await
         .map_err(|e| anyhow::anyhow!("Extraction failed: {}", e))?;
 
-    let payload = AgentPayload::from_extraction(&result, file_path, 0.85, "pdfium");
+    let payload = AgentPayload::from_extraction(&result, file_path, 0.85);
     let markdown = payload.to_markdown();
 
     Ok(vec![Content::text(markdown)])
