@@ -241,10 +241,15 @@ jobs:
           echo "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++" >> $GITHUB_ENV
           echo "STRIP_CMD=aarch64-linux-gnu-strip" >> $GITHUB_ENV
 
-      - name: Build
+      - name: Build MCP Server
         run: |
           cd pdf-module-rs
           cargo build --release --target ${{ matrix.target }} --bin pdf-mcp
+
+      - name: Build CLI
+        run: |
+          cd pdf-mcp-installer
+          cargo build --release --target ${{ matrix.target }} --bin pdf-mcp-cli
 
       - name: Optimize binary (Unix)
         if: runner.os != 'Windows'
@@ -253,6 +258,9 @@ jobs:
           STRIP="${STRIP_CMD:-strip}"
           $STRIP pdf-mcp
           ls -lh pdf-mcp
+          cd $GITHUB_WORKSPACE/pdf-mcp-installer/target/${{ matrix.target }}/release
+          $STRIP pdf-mcp-cli
+          ls -lh pdf-mcp-cli
 
       - name: Optimize binary (Windows)
         if: runner.os == 'Windows'
@@ -260,19 +268,26 @@ jobs:
           cd pdf-module-rs/target/${{ matrix.target }}/release
           strip pdf-mcp.exe
           dir pdf-mcp.exe
+          cd $GITHUB_WORKSPACE/pdf-mcp-installer/target/${{ matrix.target }}/release
+          strip pdf-mcp-cli.exe
+          dir pdf-mcp-cli.exe
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
         run: |
-          cd pdf-module-rs/target/${{ matrix.target }}/release
-          tar -czvf ${{ matrix.artifact }}.tar.gz pdf-mcp
+          mkdir -p package
+          cp pdf-module-rs/target/${{ matrix.target }}/release/pdf-mcp package/
+          cp pdf-mcp-installer/target/${{ matrix.target }}/release/pdf-mcp-cli package/
+          tar -czvf ${{ matrix.artifact }}.tar.gz -C package .
           mv ${{ matrix.artifact }}.tar.gz $GITHUB_WORKSPACE/
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
         run: |
-          cd pdf-module-rs/target/${{ matrix.target }}/release
-          7z a ${{ matrix.artifact }}.zip pdf-mcp.exe
+          mkdir package
+          copy pdf-module-rs/target/${{ matrix.target }}/release/pdf-mcp.exe package/
+          copy pdf-mcp-installer/target/${{ matrix.target }}/release/pdf-mcp-cli.exe package/
+          7z a ${{ matrix.artifact }}.zip ./package/*
           mv ${{ matrix.artifact }}.zip $GITHUB_WORKSPACE/
 
       - name: Upload artifact
@@ -310,12 +325,16 @@ jobs:
           body: |
             ## PDF Module MCP Server ${{ steps.version.outputs.VERSION }}
             
-            ### MCP Server (多平台)
+            ### MCP Server + CLI (多平台)
             - `pdf-mcp-linux-x64.tar.gz` - Linux x64
             - `pdf-mcp-linux-arm64.tar.gz` - Linux ARM64
             - `pdf-mcp-macos-x64.tar.gz` - macOS x64
             - `pdf-mcp-macos-arm64.tar.gz` - macOS ARM64
             - `pdf-mcp-windows-x64.zip` - Windows x64
+            
+            每个包包含：
+            - `pdf-mcp` - MCP 服务端
+            - `pdf-mcp-cli` - CLI 配置管理工具
             
             ### Web Frontend
             - `web-dist.tar.gz` - Vue 3 前端静态文件

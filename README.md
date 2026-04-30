@@ -108,81 +108,52 @@ curl -fsSL https://raw.githubusercontent.com/smile9493/rsut_pdf_mcp/main/install
 
 **安装完成后**：
 ```bash
-# 1. 配置 API Key
-/opt/pdf-module/pdf-mcp-cli config
+# 交互式配置（推荐）
+/opt/pdf-module/pdf-mcp-cli
 
-# 2. 启动服务
-/opt/pdf-module/pdf-mcp-cli dashboard
-
-# 3. 访问 Web 界面
-# http://localhost:8000
+# 或使用命令行
+/opt/pdf-module/pdf-mcp-cli config      # 配置 API Key
+/opt/pdf-module/pdf-mcp-cli status      # 查看状态
+/opt/pdf-module/pdf-mcp-cli start --web # 启动服务
 ```
 
 **一键安装包含**：
 - ✅ 自动检测操作系统和架构
-- ✅ 下载预编译二进制文件
+- ✅ 下载预编译二进制文件（pdf-mcp + pdf-mcp-cli）
 - ✅ 下载 Web Dashboard 前端
 - ✅ 创建配置文件
-- ✅ 创建 CLI 快捷方式
 - ✅ 创建 systemd 服务（可选）
 
 ***
 
-### 📦 方式二：CLI配置管理工具
+### 📦 方式二：CLI 配置管理工具
 
-**交互式配置**：
+安装完成后，使用 `pdf-mcp-cli` 进行配置管理：
+
 ```bash
-cd /opt/pdf-module/pdf-mcp-installer
-cargo build --release
-./target/release/pdf-mcp interactive
+# 交互式菜单（推荐）
+/opt/pdf-module/pdf-mcp-cli
+
+# 命令行方式
+/opt/pdf-module/pdf-mcp-cli init              # 初始化配置
+/opt/pdf-module/pdf-mcp-cli config            # 配置 API Key
+/opt/pdf-module/pdf-mcp-cli status            # 查看状态
+/opt/pdf-module/pdf-mcp-cli start --web       # 启动服务
+/opt/pdf-module/pdf-mcp-cli stop              # 停止服务
+/opt/pdf-module/pdf-mcp-cli logs -f           # 查看日志
+/opt/pdf-module/pdf-mcp-cli generate-config   # 生成客户端配置
 ```
 
-详细说明见 [pdf-mcp-installer/README.md](pdf-mcp-installer/README.md)
+**CLI 功能**：
+- 🔧 交互式配置菜单
+- 📊 服务状态查看
+- 🚀 服务启动/停止
+- 📝 日志查看
+- 🔗 客户端配置生成
 
 ***
 
-### 📦 方式一：自动化部署
-
-**一键部署脚本**：
-
-```bash
-# 下载并运行部署脚本
-cd /opt
-curl -O https://raw.githubusercontent.com/smile9493/rsut_pdf_mcp/main/deploy.sh
-chmod +x deploy.sh
-sudo ./deploy.sh
-```
-
-部署脚本会自动完成：
-
-- ✅ 自动检测系统架构（Linux x64/ARM64, macOS x64/ARM64）
-- ✅ 下载对应的预编译二进制文件
-- ✅ 下载 Dashboard Web 前端
-- ✅ 配置环境变量
-- ✅ 创建 systemd 服务
-- ✅ 验证安装
-
-部署完成后：
-
-1. 编辑 `/opt/pdf-module/.env.local` 设置 `VLM_API_KEY`
-2. 配置客户端 MCP（见 [快速部署指南](docs/QUICK_DEPLOY.md)）
-
-**预编译二进制下载**：
-
-GitHub Releases: [v0.1.1](https://github.com/smile9493/rsut_pdf_mcp/releases/tag/v0.1.1)
-
-| 文件名                             | 平台               | 说明            |
-| ------------------------------- | ---------------- | ------------- |
-| `pdf-mcp-linux-x64.tar.gz`      | Linux x86\_64    | 标准 Linux      |
-| `pdf-mcp-linux-arm64.tar.gz`    | Linux ARM64      | ARM 架构        |
-| `pdf-mcp-linux-x64-musl.tar.gz` | Linux x64 (musl) | Alpine Linux  |
-| `pdf-mcp-macos-x64.tar.gz`      | macOS x86\_64    | Intel Mac     |
-| `pdf-mcp-macos-arm64.tar.gz`    | macOS ARM64      | Apple Silicon |
-| `web-dist.tar.gz`               | 所有平台             | Dashboard 前端  |
-
-***
-
-### 方式一：Docker Compose（推荐）
+### 📦 方式三：Docker Compose
 
 ```yaml
 version: "3.8"
@@ -211,7 +182,24 @@ services:
     tty: true
 ```
 
-### 方式二：手动下载二进制
+### 方式四：手动下载二进制
+
+**预编译二进制下载**：
+
+GitHub Releases: [v0.1.1](https://github.com/smile9493/rsut_pdf_mcp/releases/tag/v0.1.1)
+
+| 文件名                          | 平台          | 说明           |
+| ------------------------------ | ------------- | -------------- |
+| `pdf-mcp-linux-x64.tar.gz`     | Linux x86_64  | 标准 Linux     |
+| `pdf-mcp-linux-arm64.tar.gz`   | Linux ARM64   | ARM 架构       |
+| `pdf-mcp-macos-x64.tar.gz`     | macOS x86_64  | Intel Mac      |
+| `pdf-mcp-macos-arm64.tar.gz`   | macOS ARM64   | Apple Silicon  |
+| `pdf-mcp-windows-x64.zip`      | Windows x64   | Windows        |
+| `web-dist.tar.gz`              | 所有平台       | Dashboard 前端 |
+
+每个包包含：
+- `pdf-mcp` - MCP 服务端
+- `pdf-mcp-cli` - CLI 配置管理工具
 
 ```bash
 # Linux x86_64
@@ -228,7 +216,7 @@ tar -xzf web-dist.tar.gz -C web
 rm web-dist.tar.gz
 ```
 
-### 方式三：从源码构建
+### 方式五：从源码构建
 
 ```bash
 git clone https://github.com/smile9493/rsut_pdf_mcp.git

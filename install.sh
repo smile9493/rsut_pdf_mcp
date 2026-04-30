@@ -142,6 +142,7 @@ extract_binaries() {
     fi
     
     chmod +x "$INSTALL_DIR/pdf-mcp" 2>/dev/null || true
+    chmod +x "$INSTALL_DIR/pdf-mcp-cli" 2>/dev/null || true
     
     echo -e "${GREEN}✓ 文件解压完成${NC}"
 }
@@ -187,14 +188,17 @@ EOF
         echo -e "${GREEN}✓ 配置文件已存在${NC}"
     fi
     
-    CLI_BIN="$INSTALL_DIR/pdf-mcp-cli"
-    cat > "$CLI_BIN" << EOF
+    if [[ ! -f "$INSTALL_DIR/pdf-mcp-cli" ]]; then
+        CLI_BIN="$INSTALL_DIR/pdf-mcp-cli"
+        cat > "$CLI_BIN" << EOF
 #!/bin/bash
 exec "$INSTALL_DIR/pdf-mcp" "\$@"
 EOF
-    chmod +x "$CLI_BIN"
-    
-    echo -e "${GREEN}✓ CLI 快捷方式已创建${NC}"
+        chmod +x "$CLI_BIN"
+        echo -e "${GREEN}✓ CLI 快捷方式已创建${NC}"
+    else
+        echo -e "${GREEN}✓ CLI 工具已就绪${NC}"
+    fi
 }
 
 create_service() {
@@ -236,19 +240,21 @@ print_success() {
     echo ""
     echo -e "${CYAN}快速开始:${NC}"
     echo ""
-    echo -e "  ${YELLOW}1. 配置 API Key:${NC}"
-    echo "     $INSTALL_DIR/pdf-mcp-cli config"
+    echo -e "  ${YELLOW}交互式配置 (推荐):${NC}"
+    echo "     $INSTALL_DIR/pdf-mcp-cli"
     echo ""
-    echo -e "  ${YELLOW}2. 启动 Dashboard:${NC}"
-    echo "     $INSTALL_DIR/pdf-mcp-cli dashboard"
+    echo -e "  ${YELLOW}命令行方式:${NC}"
+    echo "     $INSTALL_DIR/pdf-mcp-cli config      # 配置 API Key"
+    echo "     $INSTALL_DIR/pdf-mcp-cli status      # 查看状态"
+    echo "     $INSTALL_DIR/pdf-mcp-cli start --web # 启动服务"
     echo ""
-    echo -e "  ${YELLOW}3. 访问 Web 界面:${NC}"
+    echo -e "  ${YELLOW}访问 Web 界面:${NC}"
     echo "     http://localhost:8000"
     echo ""
     echo -e "${BLUE}配置文件: $INSTALL_DIR/.env.local${NC}"
     echo -e "${BLUE}安装目录: $INSTALL_DIR${NC}"
     echo ""
-    echo -e "${YELLOW}提示: 请编辑配置文件设置 VLM_API_KEY${NC}"
+    echo -e "${YELLOW}提示: 运行 pdf-mcp-cli 进入交互式配置菜单${NC}"
     echo ""
 }
 
