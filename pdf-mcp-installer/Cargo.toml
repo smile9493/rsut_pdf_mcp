@@ -1,6 +1,6 @@
 [package]
 name = "pdf-mcp-cli"
-version = "0.1.0"
+version = "0.1.3"
 edition = "2021"
 description = "PDF Module MCP 命令行配置管理工具"
 authors = ["PDF Module Team"]
