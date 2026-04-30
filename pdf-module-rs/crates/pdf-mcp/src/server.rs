@@ -248,13 +248,17 @@ fn handle_initialize(request: &JsonRpcRequest) -> JsonRpcResponse {
         "protocolVersion": "2024-11-05",
         "serverInfo": {
             "name": "pdf-mcp",
-            "version": "0.3.0",
-            "description": "Pure PDF extraction MCP pipe — pdfium engine, stdio only, zero state"
+            "version": "0.4.0",
+            "description": "Pure PDF extraction MCP pipe — pdfium engine, stdio only, zero state, sampling support"
         },
         "capabilities": {
-            "tools": { "listChanged": false }
+            "tools": { "listChanged": false },
+            "sampling": {
+                "supported": true,
+                "messageTypes": ["text", "image"]
+            }
         },
-        "instructions": "PDF extraction pipe. Tools: extract_text, extract_structured, get_page_count"
+        "instructions": "PDF extraction pipe. Tools: extract_text, extract_structured, get_page_count, search_keywords. Supports server-initiated LLM sampling for complex analysis."
     });
     JsonRpcResponse::success(request.id.clone(), result)
 }

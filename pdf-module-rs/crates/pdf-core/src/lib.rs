@@ -15,6 +15,8 @@ pub mod engine;
 pub mod error;
 pub mod extractor;
 pub mod mmap_loader;
+pub mod parallel;
+pub mod progress;
 pub mod quality_probe;
 pub mod validator;
 pub mod vlm_pipeline;

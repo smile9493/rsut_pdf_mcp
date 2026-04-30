@@ -5,6 +5,7 @@ members = [
     "crates/pdf-macros",
     "crates/pdf-core",
     "crates/pdf-mcp",
+    "crates/pdf-wasm",
     "crates/vlm-visual-gateway",
     "crates/pdf-dashboard",
 ]
@@ -37,3 +38,21 @@ memmap2 = "0.9"
 bumpalo = { version = "3.16", features = ["collections"] }
 sha2 = "0.10"
 once_cell = "1.19"
+# Parallel processing
+rayon = "1.10"
+num_cpus = "1.16"
+crossbeam-deque = "0.8"
+# Async utilities
+tokio-util = "0.7"
+# Progress tracking
+indicatif = "0.17"
+console = "0.15"
+
+# WASM release optimizations (see rust-wasm-frontend-infra-guide)
+[profile.wasm-release]
+inherits = "release"
+opt-level = 's'        # Optimize for size
+lto = true             # Link-time optimization
+codegen-units = 1      # Better optimization
+panic = 'abort'        # Smaller binary
+strip = true           # Strip symbols

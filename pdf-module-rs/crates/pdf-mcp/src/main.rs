@@ -36,6 +36,7 @@ use pdf_core::{McpPdfPipeline, ServerConfig};
 use std::sync::Arc;
 use tracing::info;
 
+mod sampling;
 mod server;
 
 #[tokio::main]

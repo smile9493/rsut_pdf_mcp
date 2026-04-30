@@ -28,6 +28,11 @@ memmap2 = { workspace = true }
 bumpalo = { workspace = true }
 sha2 = { workspace = true }
 once_cell = { workspace = true }
+rayon = { workspace = true }
+num_cpus = { workspace = true }
+crossbeam-deque = { workspace = true }
+indicatif = { workspace = true }
+console = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.10"
