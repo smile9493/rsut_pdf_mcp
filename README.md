@@ -6,7 +6,7 @@
 [![CI](https://github.com/smile9493/rsut_pdf_mcp/actions/workflows/build.yml/badge.svg)](https://github.com/smile9493/rsut_pdf_mcp/actions)
 [![Release](https://img.shields.io/github/v/release/smile9493/rsut_pdf_mcp)](https://github.com/smile9493/rsut_pdf_mcp/releases)
 
-** PDF 提取 MCP 管道** — 零拷贝mmap、智能质量探测、Wiki自动化、双模态工具集。
+\*\* PDF 提取 MCP 管道\*\* — 零拷贝mmap、智能质量探测、Wiki自动化、双模态工具集。
 
 基于**唯物辩证法与截拳道**工程哲学，将项目从臃肿的通用服务端重塑为极致精简、物理确定的 **AI Agent 专用感知器官**。
 
@@ -94,6 +94,150 @@
 
 ## 🚀 快速开始
 
+### ⚡ 方式一：一键安装（最简单）
+
+**新服务器从零开始，一行命令安装**：
+
+```bash
+# 使用 wget
+bash <(wget -qO- https://raw.githubusercontent.com/smile9493/rsut_pdf_mcp/main/install.sh)
+
+# 或使用 curl
+curl -fsSL https://raw.githubusercontent.com/smile9493/rsut_pdf_mcp/main/install.sh | bash
+```
+
+**安装完成后**：
+```bash
+# 1. 配置 API Key
+/opt/pdf-module/pdf-mcp-cli config
+
+# 2. 启动服务
+/opt/pdf-module/pdf-mcp-cli start --web
+
+# 3. 访问 Web 界面
+# http://localhost:8080
+```
+
+**一键安装包含**：
+- ✅ 自动检测操作系统
+- ✅ 安装依赖
+- ✅ 安装 Rust 和 Node.js
+- ✅ 克隆并构建项目
+- ✅ 创建配置文件
+- ✅ 创建 CLI 快捷方式
+
+***
+
+### 📦 方式二：CLI配置管理工具（推荐）
+
+**一键配置和管理**：
+
+```bash
+# 下载CLI工具
+cd /opt/pdf-module
+git clone https://github.com/smile9493/rsut_pdf_mcp.git
+cd rsut_pdf_mcp/pdf-mcp-installer
+cargo build --release
+
+# 运行交互式配置
+./target/release/pdf-mcp interactive
+```
+
+**CLI功能**：
+
+- ✅ 初始化配置
+- ✅ 配置 GLM API（交互式）
+- ✅ 查看服务端配置状态
+- ✅ 生成客户端配置
+- ✅ 启动/停止服务
+- ✅ 查看日志
+
+**命令行使用**：
+
+```bash
+# 初始化配置
+./pdf-mcp init
+
+# 配置API Key
+./pdf-mcp config --key YOUR_API_KEY
+
+# 查看状态
+./pdf-mcp status
+
+# 启动服务（Dashboard API + Web前端）
+./pdf-mcp start --web
+
+# 停止服务
+./pdf-mcp stop
+
+# 生成客户端配置
+./pdf-mcp generate-config
+```
+
+**服务架构**：
+
+```
+┌─────────────────────────────────────────┐
+│  Web 前端 (端口 8080)                    │
+│  http://localhost:8080                  │
+│  - 提供 Web 界面                         │
+│  - 用户交互界面                          │
+└──────────────┬──────────────────────────┘
+               │ 调用 API
+               ↓
+┌─────────────────────────────────────────┐
+│  Dashboard API (端口 8000)              │
+│  http://localhost:8000/api/*            │
+│  - /api/health - 健康检查               │
+│  - /api/metrics - 性能指标              │
+│  - /api/status - 系统状态               │
+│  - /api/logs - 日志查询                 │
+└─────────────────────────────────────────┘
+```
+
+***
+
+### 📦 方式一：自动化部署
+
+**一键部署脚本**：
+
+```bash
+# 下载并运行部署脚本
+cd /opt
+curl -O https://raw.githubusercontent.com/smile9493/rsut_pdf_mcp/main/deploy.sh
+chmod +x deploy.sh
+sudo ./deploy.sh
+```
+
+部署脚本会自动完成：
+
+- ✅ 自动检测系统架构（Linux x64/ARM64, macOS x64/ARM64）
+- ✅ 下载对应的预编译二进制文件
+- ✅ 下载 Dashboard Web 前端
+- ✅ 配置环境变量
+- ✅ 创建 systemd 服务
+- ✅ 验证安装
+
+部署完成后：
+
+1. 编辑 `/opt/pdf-module/.env.local` 设置 `VLM_API_KEY`
+2. 配置客户端 MCP（见 [快速部署指南](docs/QUICK_DEPLOY.md)）
+
+**预编译二进制下载**：
+
+GitHub Releases: [v0.1.1](https://github.com/smile9493/rsut_pdf_mcp/releases/tag/v0.1.1)
+
+| 文件名                             | 平台               | 说明            |
+| ------------------------------- | ---------------- | ------------- |
+| `pdf-mcp-linux-x64.tar.gz`      | Linux x86\_64    | 标准 Linux      |
+| `pdf-mcp-linux-arm64.tar.gz`    | Linux ARM64      | ARM 架构        |
+| `pdf-mcp-linux-x64-musl.tar.gz` | Linux x64 (musl) | Alpine Linux  |
+| `pdf-mcp-macos-x64.tar.gz`      | macOS x86\_64    | Intel Mac     |
+| `pdf-mcp-macos-arm64.tar.gz`    | macOS ARM64      | Apple Silicon |
+| `web-dist.tar.gz`               | 所有平台             | Dashboard 前端  |
+
+***
+
 ### 方式一：Docker Compose（推荐）
 
 ```yaml
@@ -118,14 +262,27 @@ services:
       - DASHBOARD_WEB_DIR=/app/web/dist
       - DASHBOARD_PORT=8000
       - VLM_API_KEY=${VLM_API_KEY:-}
-      - VLM_MODEL=${VLM_MODEL:-gpt-4o}
+      - VLM_MODEL=${VLM_MODEL:-glm-4v-flash}
     stdin_open: true
     tty: true
 ```
 
-### 方式二：二进制文件
+### 方式二：手动下载二进制
 
-从 [Releases](https://github.com/smile9493/rsut_pdf_mcp/releases) 下载对应平台版本。
+```bash
+# Linux x86_64
+cd /opt
+wget https://github.com/smile9493/rsut_pdf_mcp/releases/download/v0.1.1/pdf-mcp-linux-x64.tar.gz
+tar -xzf pdf-mcp-linux-x64.tar.gz
+rm pdf-mcp-linux-x64.tar.gz
+chmod +x pdf-mcp
+
+# 下载 Dashboard 前端（可选）
+wget https://github.com/smile9493/rsut_pdf_mcp/releases/download/v0.1.1/web-dist.tar.gz
+mkdir -p web
+tar -xzf web-dist.tar.gz -C web
+rm web-dist.tar.gz
+```
 
 ### 方式三：从源码构建
 
@@ -134,6 +291,7 @@ git clone https://github.com/smile9493/rsut_pdf_mcp.git
 cd rsut_pdf_mcp/pdf-module-rs
 
 cargo build --release --bin pdf-mcp
+# 二进制位于 target/release/pdf-mcp
 ```
 
 ***
@@ -312,20 +470,20 @@ extraction_method: pdfium
 
 ## 🔧 环境变量
 
-| 变量                    | 说明        | 默认值                                          |
-| --------------------- | --------- | -------------------------------------------- |
-| `VLM_API_KEY`         | VLM API密钥 | -                                            |
-| `VLM_ENDPOINT`        | VLM端点URL  | `https://api.openai.com/v1/chat/completions` |
-| `VLM_MODEL`           | 模型名称      | `gpt-4o`                                     |
-| `VLM_TIMEOUT_SECS`    | 请求超时      | `30`                                         |
-| `VLM_MAX_CONCURRENCY` | 最大并发      | `5`                                          |
-| `PDFIUM_LIB_PATH`     | Pdfium库路径 | -                                            |
+| 变量                    | 说明          | 默认值                                          |
+| --------------------- | ----------- | -------------------------------------------- |
+| `VLM_API_KEY`         | VLM API密钥   | -                                            |
+| `VLM_ENDPOINT`        | VLM端点URL    | `https://api.openai.com/v1/chat/completions` |
+| `VLM_MODEL`           | 模型名称        | `gpt-4o`                                     |
+| `VLM_TIMEOUT_SECS`    | 请求超时        | `30`                                         |
+| `VLM_MAX_CONCURRENCY` | 最大并发        | `5`                                          |
+| `PDFIUM_LIB_PATH`     | Pdfium库路径   | -                                            |
 | `DASHBOARD_PORT`      | Dashboard端口 | `8000`                                       |
-| `DASHBOARD_WEB_DIR`   | 前端静态文件目录 | `./web/dist`                                  |
-| `STORAGE_TYPE`        | 存储类型      | `local`                                       |
-| `STORAGE_LOCAL_DIR`   | 本地存储目录   | `./data`                                      |
-| `CACHE_ENABLED`       | 缓存开关      | `true`                                        |
-| `CACHE_MAX_SIZE`      | 缓存上限      | `1000`                                        |
+| `DASHBOARD_WEB_DIR`   | 前端静态文件目录    | `./web/dist`                                 |
+| `STORAGE_TYPE`        | 存储类型        | `local`                                      |
+| `STORAGE_LOCAL_DIR`   | 本地存储目录      | `./data`                                     |
+| `CACHE_ENABLED`       | 缓存开关        | `true`                                       |
+| `CACHE_MAX_SIZE`      | 缓存上限        | `1000`                                       |
 
 ***
 
