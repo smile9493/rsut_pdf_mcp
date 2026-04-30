@@ -446,9 +446,14 @@ RUST_LOG={}
         } else {
             print!("  {} 启动 Dashboard...", "→".blue());
             
+            let pdfium_lib = format!("{}/lib/libpdfium.so", self.install_dir);
+            let lib_dir = format!("{}/lib", self.install_dir);
+            
             let result = Command::new(&dashboard_binary)
                 .args(&["dashboard", "--port", &config.dashboard_port.to_string()])
                 .current_dir(&self.install_dir)
+                .env("PDFIUM_LIB_PATH", &pdfium_lib)
+                .env("LD_LIBRARY_PATH", &lib_dir)
                 .env("VLM_API_KEY", &config.vlm_api_key)
                 .env("VLM_MODEL", &config.vlm_model)
                 .env("VLM_ENDPOINT", &config.vlm_endpoint)
