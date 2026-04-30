@@ -284,8 +284,7 @@ jobs:
           mkdir -p package
           cp pdf-module-rs/target/${{ matrix.target }}/release/pdf-mcp package/
           cp pdf-mcp-installer/target/${{ matrix.target }}/release/pdf-mcp-cli package/
-          tar -czvf ${{ matrix.artifact }}.tar.gz -C package .
-          mv ${{ matrix.artifact }}.tar.gz $GITHUB_WORKSPACE/
+          tar -czvf $GITHUB_WORKSPACE/${{ matrix.artifact }}.tar.gz -C package .
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
@@ -293,8 +292,7 @@ jobs:
           mkdir package
           copy pdf-module-rs/target/${{ matrix.target }}/release/pdf-mcp.exe package/
           copy pdf-mcp-installer/target/${{ matrix.target }}/release/pdf-mcp-cli.exe package/
-          7z a ${{ matrix.artifact }}.zip ./package/*
-          mv ${{ matrix.artifact }}.zip $GITHUB_WORKSPACE/
+          7z a ${{ github.workspace }}/${{ matrix.artifact }}.zip ./package/*
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
