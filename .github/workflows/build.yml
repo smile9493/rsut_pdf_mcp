@@ -3,10 +3,18 @@ name: Build and Release
 on:
   push:
     branches: [main]
+    paths:
+      - 'pdf-module-rs/**'
+      - 'web/**'
+      - '.github/workflows/build.yml'
     tags:
       - 'v*'
   pull_request:
     branches: [main]
+    paths:
+      - 'pdf-module-rs/**'
+      - 'web/**'
+      - '.github/workflows/build.yml'
   workflow_dispatch:
 
 permissions:
@@ -37,6 +45,11 @@ jobs:
             ~/.cargo/git
             pdf-module-rs/target
           key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Clean up advisory database from cache
+        run: |
+          rm -rf ~/.cargo/advisory-db
+          rm -rf ~/.cargo/git/checkouts/advisory-db
 
       - name: Run tests
         run: |
@@ -297,7 +310,7 @@ jobs:
           body: |
             ## PDF Module MCP Server ${{ steps.version.outputs.VERSION }}
             
-            ### MCP Client (多平台)
+            ### MCP Server (多平台)
             - `pdf-mcp-linux-x64.tar.gz` - Linux x64
             - `pdf-mcp-linux-arm64.tar.gz` - Linux ARM64
             - `pdf-mcp-macos-x64.tar.gz` - macOS x64
@@ -309,7 +322,7 @@ jobs:
             
             ### Docker Images
             ```bash
-            # MCP 客户端 (stdio 协议)
+            # MCP Server (stdio 协议)
             docker pull smile9493/pdf-mcp:${{ steps.version.outputs.VERSION }}-mcp
             
             # Web 前端 (nginx)
