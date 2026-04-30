@@ -68,21 +68,18 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Clean up advisory database cache
+        run: |
+          rm -rf ~/.cargo/advisory-db
+          rm -rf ~/.cargo/git/checkouts/advisory-db
+
       - name: Install cargo-deny
         run: cargo install cargo-deny
 
-      - name: Install cargo-audit
-        run: cargo install cargo-audit
-
-      - name: Security audit
+      - name: Security audit with cargo-deny
         run: |
           cd pdf-module-rs
-          cargo deny check
-
-      - name: Check for known vulnerabilities
-        run: |
-          cd pdf-module-rs
-          cargo audit
+          cargo deny check advisories
 
   code-coverage:
     name: Code Coverage
