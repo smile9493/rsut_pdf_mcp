@@ -19,5 +19,5 @@ dirs = "5.0"
 chrono = "0.4"
 
 [[bin]]
-name = "pdf-mcp"
+name = "pdf-mcp-cli"
 path = "src/main.rs"
