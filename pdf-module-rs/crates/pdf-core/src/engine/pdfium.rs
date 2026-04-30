@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use std::env;
 use std::panic::catch_unwind;
 use std::path::Path;
 
@@ -20,6 +21,24 @@ struct StructuredParts {
 impl PdfiumEngine {
     pub fn new() -> PdfResult<Self> {
         Ok(Self)
+    }
+    
+    fn get_pdfium() -> pdfium_render::prelude::Pdfium {
+        use pdfium_render::prelude::*;
+        
+        if let Ok(path) = env::var("PDFIUM_LIB_PATH") {
+            let path = Path::new(&path);
+            if path.exists() {
+                if let Ok(bindings) = Pdfium::bind_to_library(path) {
+                    return Pdfium::new(bindings);
+                }
+            }
+        }
+        
+        match Pdfium::bind_to_system_library() {
+            Ok(bindings) => Pdfium::new(bindings),
+            Err(e) => panic!("Failed to load pdfium: {}. Set PDFIUM_LIB_PATH environment variable.", e),
+        }
     }
 
     pub fn extract_text_from_mmap(loader: &MmapPdfLoader) -> PdfResult<String> {
@@ -49,9 +68,8 @@ impl PdfiumEngine {
     }
 
     pub fn safe_extract_text(data: &[u8]) -> PdfResult<String> {
+        let pdfium = Self::get_pdfium();
         catch_unwind(|| {
-            use pdfium_render::prelude::*;
-            let pdfium = Pdfium::default();
             let document = pdfium.load_pdf_from_byte_slice(data, None)?;
             let mut all_text = String::new();
             let pages = document.pages();
@@ -68,9 +86,8 @@ impl PdfiumEngine {
     }
 
     fn safe_extract_structured_parts(data: &[u8]) -> PdfResult<StructuredParts> {
+        let pdfium = Self::get_pdfium();
         catch_unwind(|| {
-            use pdfium_render::prelude::*;
-            let pdfium = Pdfium::default();
             let document = pdfium.load_pdf_from_byte_slice(data, None)?;
             let pages = document.pages();
             let page_count = pages.len() as u32;
@@ -105,9 +122,8 @@ impl PdfiumEngine {
     }
 
     pub fn safe_get_page_count(data: &[u8]) -> PdfResult<u32> {
+        let pdfium = Self::get_pdfium();
         catch_unwind(|| {
-            use pdfium_render::prelude::*;
-            let pdfium = Pdfium::default();
             let document = pdfium.load_pdf_from_byte_slice(data, None)?;
             Ok::<u32, PdfiumError>(document.pages().len() as u32)
         })
