@@ -13,7 +13,6 @@ const DEFAULT_VLM_MODEL: &str = "glm-4v-flash";
 #[derive(Parser)]
 #[command(name = "pdf-mcp-cli")]
 #[command(author = "PDF Module Team")]
-#[command(version = "0.1.0")]
 #[command(about = "PDF Module MCP 配置管理工具", long_about = None)]
 struct Cli {
     #[command(subcommand)]
