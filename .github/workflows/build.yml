@@ -274,7 +274,7 @@ jobs:
           cd pdf-module-rs/target/${{ matrix.target }}/release
           strip pdf-mcp.exe
           dir pdf-mcp.exe
-          cd $GITHUB_WORKSPACE/pdf-mcp-installer/target/${{ matrix.target }}/release
+          cd ${{ github.workspace }}/pdf-mcp-installer/target/${{ matrix.target }}/release
           strip pdf-mcp-cli.exe
           dir pdf-mcp-cli.exe
 
