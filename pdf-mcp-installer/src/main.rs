@@ -59,6 +59,11 @@ enum Commands {
     },
 
     Ps,
+
+    DownloadWeb {
+        #[arg(short, long)]
+        version: Option<String>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -203,17 +208,79 @@ RUST_LOG={}
 
         if output.status.success() {
             let pid_str = String::from_utf8_lossy(&output.stdout);
+            // 返回第一个匹配的PID
             pid_str.lines().next()?.trim().parse().ok()
         } else {
             None
         }
     }
 
-    fn kill_process(&self, name: &str) -> bool {
-        Command::new("pkill")
-            .args(["-f", name])
-            .status()
-            .map(|s| s.success())
+    fn check_mcp_server(&self) -> Option<u32> {
+        // MCP Server: 匹配 pdf-mcp 但排除 pdf-dashboard 和临时进程
+        let output = Command::new("ps")
+            .args(["aux"])
+            .output()
+            .ok()?;
+
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        
+        for line in output_str.lines() {
+            if line.contains("/opt/pdf-module/pdf-mcp") 
+                && !line.contains("pdf-dashboard")
+                && !line.contains("--version")
+                && !line.contains("--help")
+                && !line.contains("dashboard") {
+                // 提取PID（第二列）
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() > 1 {
+                    if let Ok(pid) = parts[1].parse::<u32>() {
+                        return Some(pid);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn check_dashboard(&self) -> Option<u32> {
+        // Dashboard API: 精确匹配 pdf-dashboard
+        self.check_process("/opt/pdf-module/pdf-dashboard")
+    }
+
+    fn check_web_frontend(&self) -> Option<u32> {
+        // Web Frontend: 精确匹配 /opt/pdf-module/web 目录下的 serve 进程
+        let output = Command::new("ps")
+            .args(["aux"])
+            .output()
+            .ok()?;
+
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        let web_dir = format!("{}/web", self.install_dir);
+        
+        for line in output_str.lines() {
+            // 精确匹配：必须在安装目录的 web 目录下运行 serve
+            if line.contains(&web_dir) 
+                && line.contains("serve") 
+                && line.contains("8080") {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() > 1 {
+                    if let Ok(pid) = parts[1].parse::<u32>() {
+                        return Some(pid);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn check_port(&self, port: u16) -> bool {
+        Command::new("ss")
+            .args(["-tlnp"])
+            .output()
+            .map(|output| {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                output_str.contains(&format!(":{}", port))
+            })
             .unwrap_or(false)
     }
 
@@ -377,15 +444,27 @@ RUST_LOG={}
 
         println!("\n  {}", "进程:".yellow());
 
-        if let Some(pid) = self.check_process("pdf-mcp.*dashboard") {
-            println!("    {} Dashboard 服务运行中 (PID: {})", "✓".green(), pid);
-            println!("      访问: http://localhost:{}", config.dashboard_port);
+        // MCP Server (即用即停)
+        if let Some(pid) = self.check_mcp_server() {
+            println!("    {} MCP Server 运行中 (PID: {})", "✓".green(), pid);
+            println!("      说明: MCP服务即用即停，无需手动管理");
         } else {
-            println!("    {} Dashboard 服务未运行", "○".blue());
+            println!("    {} MCP Server 未运行 (按需启动)", "○".blue());
         }
 
-        if let Some(pid) = self.check_process("serve.*dist") {
-            println!("    {} Web 前端运行中 (PID: {})", "✓".green(), pid);
+        // Dashboard API
+        if let Some(pid) = self.check_dashboard() {
+            println!("    {} Dashboard API 运行中 (PID: {})", "✓".green(), pid);
+            println!("      访问: http://localhost:{}", config.dashboard_port);
+        } else {
+            println!("    {} Dashboard API 未运行", "○".blue());
+        }
+
+        // Web Frontend
+        if let Some(pid) = self.check_web_frontend() {
+            println!("    {} Web 前端运行中 (PID: {}, 端口: 8080)", "✓".green(), pid);
+        } else if self.check_port(8080) {
+            println!("    {} Web 前端运行中 (端口: 8080)", "✓".green());
         } else {
             println!("    {} Web 前端未运行", "○".blue());
         }
@@ -403,14 +482,14 @@ RUST_LOG={}
         println!("  {}", "-".repeat(40));
 
         let processes = vec![
-            ("pdf-mcp.*dashboard", "Dashboard API"),
-            ("serve.*dist", "Web 前端"),
-            ("pdf-mcp$", "MCP Server"),
+            ("MCP Server", self.check_mcp_server()),
+            ("Dashboard API", self.check_dashboard()),
+            ("Web Frontend", self.check_web_frontend()),
         ];
 
         let mut found = false;
-        for (pattern, name) in processes {
-            if let Some(pid) = self.check_process(pattern) {
+        for (name, pid_opt) in processes {
+            if let Some(pid) = pid_opt {
                 println!(
                     "  {:<8} {:<20} {}",
                     pid.to_string().white(),
@@ -460,45 +539,46 @@ RUST_LOG={}
         let config = self.load_config();
 
         if !web {
-            println!("  {} MCP 服务按需启动，无需手动启动", "ℹ".blue());
-            println!("  使用 --web 参数启动 Dashboard");
+            println!("  {} MCP Server 按需启动，无需手动管理", "ℹ".blue());
+            println!("  使用 --web 参数启动 Dashboard 和 Web 前端");
             return;
         }
 
-        let dashboard_binary = format!("{}/pdf-mcp", self.install_dir);
-        let web_dist = format!("{}/web/dist", self.install_dir);
-
+        // 检查Dashboard二进制
+        let dashboard_binary = format!("{}/pdf-dashboard", self.install_dir);
         if !Path::new(&dashboard_binary).exists() {
-            println!("  {} pdf-mcp 不存在", "✗".red());
+            println!("  {} pdf-dashboard 不存在", "✗".red());
+            println!("  {} 请检查安装是否完整", "ℹ".blue());
             return;
         }
 
+        // 检查Web前端
+        let web_dist = format!("{}/web/dist", self.install_dir);
         if !Path::new(&web_dist).exists() {
             println!("  {} Web 前端不存在", "✗".red());
+            println!("  {} 请先下载 Web 前端:", "ℹ".blue());
+            println!("     pdf-mcp-cli download-web");
+            println!("  或使用交互式菜单选择下载");
             return;
         }
 
-        if self.check_process("pdf-mcp.*dashboard").is_some() {
-            println!("  {} Dashboard 已在运行", "ℹ".blue());
+        // 启动Dashboard API
+        if self.check_dashboard().is_some() {
+            println!("  {} Dashboard API 已在运行", "ℹ".blue());
         } else {
-            print!("  {} 启动 Dashboard...", "→".blue());
+            print!("  {} 启动 Dashboard API...", "→".blue());
 
             let pdfium_lib = format!("{}/lib/libpdfium.so", self.install_dir);
             let lib_dir = format!("{}/lib", self.install_dir);
 
             let result = Command::new(&dashboard_binary)
-                .args(["dashboard", "--port", &config.dashboard_port.to_string()])
+                .args(["--port", &config.dashboard_port.to_string()])
                 .current_dir(&self.install_dir)
                 .env("PDFIUM_LIB_PATH", &pdfium_lib)
                 .env("LD_LIBRARY_PATH", &lib_dir)
                 .env("VLM_API_KEY", &config.vlm_api_key)
                 .env("VLM_MODEL", &config.vlm_model)
                 .env("VLM_ENDPOINT", &config.vlm_endpoint)
-                .env("DASHBOARD_PORT", config.dashboard_port.to_string())
-                .env(
-                    "DASHBOARD_WEB_DIR",
-                    format!("{}/web/dist", self.install_dir),
-                )
                 .env("RUST_LOG", &config.rust_log)
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -507,9 +587,9 @@ RUST_LOG={}
             match result {
                 Ok(child) => {
                     self.save_pid(child.id());
-                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    std::thread::sleep(std::time::Duration::from_millis(1000));
 
-                    if self.check_process("pdf-mcp.*dashboard").is_some() {
+                    if self.check_dashboard().is_some() {
                         println!(" {}", "✓".green());
                     } else {
                         println!(" {}", "✗ 启动失败".red());
@@ -523,7 +603,7 @@ RUST_LOG={}
             }
         }
 
-        if self.check_process("serve.*dist").is_some() {
+        if self.check_port(8080) {
             println!("  {} Web 前端已在运行", "ℹ".blue());
         } else {
             print!("  {} 启动 Web 前端...", "→".blue());
@@ -538,9 +618,9 @@ RUST_LOG={}
 
             match result {
                 Ok(_) => {
-                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    std::thread::sleep(std::time::Duration::from_millis(3000));
 
-                    if self.check_process("serve.*dist").is_some() {
+                    if self.check_port(8080) {
                         println!(" {}", "✓".green());
                     } else {
                         println!(" {}", "✗ 启动失败".red());
@@ -563,16 +643,38 @@ RUST_LOG={}
     fn cmd_stop(&self) {
         println!("\n{}", ">>> 停止服务".cyan().bold());
 
-        print!("  {} 停止 Dashboard...", "→".blue());
-        if self.kill_process("pdf-mcp.*dashboard") {
-            println!(" {}", "✓".green());
+        print!("  {} 停止 Dashboard API...", "→".blue());
+        if let Some(pid) = self.check_dashboard() {
+            let _ = Command::new("kill")
+                .args([&pid.to_string()])
+                .status();
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            
+            if self.check_dashboard().is_none() {
+                println!(" {}", "✓".green());
+            } else {
+                println!(" {}", "✗ 停止失败".red());
+            }
         } else {
             println!(" {}", "未运行".blue());
         }
 
         print!("  {} 停止 Web 前端...", "→".blue());
-        if self.kill_process("serve.*dist") {
-            println!(" {}", "✓".green());
+        if let Some(pid) = self.check_web_frontend() {
+            let _ = Command::new("kill")
+                .args([&pid.to_string()])
+                .status();
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            
+            if self.check_web_frontend().is_none() && !self.check_port(8080) {
+                println!(" {}", "✓".green());
+            } else {
+                println!(" {}", "✗ 停止失败".red());
+            }
+        } else if self.check_port(8080) {
+            // 端口被其他进程占用，不要误杀！
+            println!(" {}", "端口 8080 被其他进程占用，请手动检查".yellow());
+            println!("    提示: 使用 'ss -tlnp | grep 8080' 查看占用进程");
         } else {
             println!(" {}", "未运行".blue());
         }
@@ -584,6 +686,103 @@ RUST_LOG={}
         self.cmd_stop();
         std::thread::sleep(std::time::Duration::from_millis(500));
         self.cmd_start(true);
+    }
+
+    fn cmd_download_web(&self, version: Option<String>) {
+        println!("\n{}", ">>> 下载 Web 前端".cyan().bold());
+
+        let web_dist = format!("{}/web/dist", self.install_dir);
+        
+        if Path::new(&web_dist).exists() {
+            println!("  {} Web 前端已存在", "ℹ".blue());
+            print!("  {} 是否重新下载? (y/N): ", "?".yellow());
+            use std::io::{self, BufRead};
+            let stdin = io::stdin();
+            let input = stdin.lock().lines().next().unwrap_or(Ok(String::new())).unwrap_or_default();
+            
+            if !input.to_lowercase().starts_with('y') {
+                println!("  {} 已取消", "ℹ".blue());
+                return;
+            }
+        }
+
+        let version = version.unwrap_or_else(|| {
+            print!("  {} 获取最新版本...", "→".blue());
+            let output = Command::new("curl")
+                .args(["-s", "https://api.github.com/repos/smile9493/rsut_pdf_mcp/releases/latest"])
+                .output();
+            
+            match output {
+                Ok(output) => {
+                    let response = String::from_utf8_lossy(&output.stdout);
+                    for line in response.lines() {
+                        if line.contains("\"tag_name\":") {
+                            let version = line.split(':').nth(1).unwrap_or("\"v0.1.3\"")
+                                .trim().trim_matches(',').trim_matches('"').to_string();
+                            println!(" {}", version.green());
+                            return version;
+                        }
+                    }
+                }
+                Err(_) => {}
+            }
+            println!(" {}", "v0.1.3 (默认)".blue());
+            "v0.1.3".to_string()
+        });
+
+        let download_url = format!(
+            "https://github.com/smile9493/rsut_pdf_mcp/releases/download/{}/web-dist.tar.gz",
+            version
+        );
+
+        print!("  {} 下载 Web 前端...", "→".blue());
+        
+        let web_dir = format!("{}/web", self.install_dir);
+        let temp_file = format!("{}/web-dist.tar.gz", web_dir);
+
+        fs::create_dir_all(&web_dir).ok();
+
+        let result = Command::new("curl")
+            .args(["-fsSL", "-o", &temp_file, &download_url])
+            .status();
+
+        match result {
+            Ok(status) if status.success() => {
+                println!(" {}", "✓".green());
+                
+                print!("  {} 解压文件...", "→".blue());
+                
+                // 清理旧的dist目录
+                if Path::new(&web_dist).exists() {
+                    fs::remove_dir_all(&web_dist).ok();
+                }
+
+                let extract_result = Command::new("tar")
+                    .args(["-xzf", &temp_file, "-C", &web_dir])
+                    .status();
+
+                match extract_result {
+                    Ok(status) if status.success() => {
+                        println!(" {}", "✓".green());
+                        
+                        // 清理临时文件
+                        fs::remove_file(&temp_file).ok();
+                        
+                        println!("\n  {} Web 前端下载完成！", "✓".green());
+                        println!("  {} 版本: {}", "→".blue(), version);
+                        println!("  {} 位置: {}", "→".blue(), web_dist);
+                    }
+                    _ => {
+                        println!(" {}", "✗ 解压失败".red());
+                        fs::remove_file(&temp_file).ok();
+                    }
+                }
+            }
+            _ => {
+                println!(" {}", "✗ 下载失败".red());
+                println!("  {} 请检查网络连接或使用代理", "ℹ".blue());
+            }
+        }
     }
 
     fn cmd_logs(&self, lines: u16, follow: bool) {
@@ -648,6 +847,7 @@ fn main() {
         Some(Commands::Restart) => manager.cmd_restart(),
         Some(Commands::Logs { lines, follow }) => manager.cmd_logs(lines, follow),
         Some(Commands::Ps) => manager.cmd_ps(),
+        Some(Commands::DownloadWeb { version }) => manager.cmd_download_web(version),
     }
 }
 
@@ -673,6 +873,7 @@ fn interactive_menu(manager: &McpManager) {
         println!("  {} 查看进程", "6".cyan());
         println!("  {} 查看日志", "7".cyan());
         println!("  {} 生成客户端配置", "8".cyan());
+        println!("  {} 下载 Web 前端", "9".cyan());
         println!("  {} 退出", "0".cyan());
 
         print!("\n  选择: ");
@@ -699,6 +900,7 @@ fn interactive_menu(manager: &McpManager) {
                 manager.cmd_logs(n, false);
             }
             "8" => manager.cmd_generate_config(None),
+            "9" => manager.cmd_download_web(None),
             "0" | "q" | "quit" | "exit" => {
                 println!("\n  再见！\n");
                 break;
