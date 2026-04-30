@@ -68,6 +68,7 @@ impl PdfiumEngine {
     }
 
     pub fn safe_extract_text(data: &[u8]) -> PdfResult<String> {
+        use pdfium_render::prelude::*;
         let pdfium = Self::get_pdfium();
         catch_unwind(|| {
             let document = pdfium.load_pdf_from_byte_slice(data, None)?;
@@ -86,6 +87,7 @@ impl PdfiumEngine {
     }
 
     fn safe_extract_structured_parts(data: &[u8]) -> PdfResult<StructuredParts> {
+        use pdfium_render::prelude::*;
         let pdfium = Self::get_pdfium();
         catch_unwind(|| {
             let document = pdfium.load_pdf_from_byte_slice(data, None)?;
@@ -122,6 +124,7 @@ impl PdfiumEngine {
     }
 
     pub fn safe_get_page_count(data: &[u8]) -> PdfResult<u32> {
+        use pdfium_render::prelude::*;
         let pdfium = Self::get_pdfium();
         catch_unwind(|| {
             let document = pdfium.load_pdf_from_byte_slice(data, None)?;

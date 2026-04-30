@@ -130,6 +130,7 @@ wiki/
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
+| `PDFIUM_LIB_PATH` | PDFium 库路径 | 自动检测 |
 | `VLM_API_KEY` | VLM API 密钥 | - |
 | `VLM_MODEL` | 模型名称 | `glm-4v-flash` |
 | `VLM_ENDPOINT` | API 端点 | `https://open.bigmodel.cn/api/paas/v4/chat/completions` |

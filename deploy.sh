@@ -6,6 +6,7 @@ INSTALL_DIR="/opt/pdf-module"
 REPO_OWNER="smile9493"
 REPO_NAME="rsut_pdf_mcp"
 API_URL="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest"
+PDFIUM_VERSION="chromium/7529"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -45,9 +46,13 @@ detect_architecture() {
             case $ARCH in
                 x86_64)
                     BINARY_NAME="pdf-mcp-linux-x64.tar.gz"
+                    PDFIUM_NAME="pdfium-linux-x64.tgz"
+                    PDFIUM_LIB="libpdfium.so"
                     ;;
                 aarch64|arm64)
                     BINARY_NAME="pdf-mcp-linux-arm64.tar.gz"
+                    PDFIUM_NAME="pdfium-linux-arm64.tgz"
+                    PDFIUM_LIB="libpdfium.so"
                     ;;
                 *)
                     echo -e "${RED}不支持的架构: $ARCH${NC}"
@@ -59,9 +64,13 @@ detect_architecture() {
             case $ARCH in
                 x86_64)
                     BINARY_NAME="pdf-mcp-macos-x64.tar.gz"
+                    PDFIUM_NAME="pdfium-mac-x64.tgz"
+                    PDFIUM_LIB="libpdfium.dylib"
                     ;;
                 arm64)
                     BINARY_NAME="pdf-mcp-macos-arm64.tar.gz"
+                    PDFIUM_NAME="pdfium-mac-arm64.tgz"
+                    PDFIUM_LIB="libpdfium.dylib"
                     ;;
                 *)
                     echo -e "${RED}不支持的架构: $ARCH${NC}"
@@ -77,6 +86,7 @@ detect_architecture() {
     
     echo -e "${GREEN}检测到系统: $OS $ARCH${NC}"
     echo -e "${GREEN}二进制包: $BINARY_NAME${NC}"
+    echo -e "${GREEN}PDFium: $PDFIUM_NAME${NC}"
 }
 
 install_curl() {
@@ -93,20 +103,20 @@ install_curl() {
 }
 
 get_latest_version() {
-    echo -e "${YELLOW}[1/5] 获取最新版本...${NC}"
+    echo -e "${YELLOW}[1/6] 获取最新版本...${NC}"
     
     VERSION=$(curl -s $API_URL | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
     
     if [[ -z "$VERSION" ]]; then
-        echo -e "${RED}无法获取最新版本，使用默认版本 v0.1.1${NC}"
-        VERSION="v0.1.1"
+        echo -e "${RED}无法获取最新版本，使用默认版本 v0.1.3${NC}"
+        VERSION="v0.1.3"
     fi
     
     echo -e "${GREEN}最新版本: $VERSION${NC}"
 }
 
 download_binaries() {
-    echo -e "${YELLOW}[2/5] 下载预编译二进制...${NC}"
+    echo -e "${YELLOW}[2/6] 下载预编译二进制...${NC}"
     
     mkdir -p "$INSTALL_DIR"
     cd "$INSTALL_DIR"
@@ -121,8 +131,31 @@ download_binaries() {
     echo -e "${GREEN}✓ 二进制下载完成${NC}"
 }
 
+download_pdfium() {
+    echo -e "${YELLOW}[3/6] 下载 PDFium 库...${NC}"
+    
+    mkdir -p "$INSTALL_DIR/lib"
+    cd "$INSTALL_DIR/lib"
+    
+    PDFIUM_URL="https://github.com/bblanchon/pdfium-binaries/releases/download/${PDFIUM_VERSION}/${PDFIUM_NAME}"
+    echo -e "${CYAN}  下载: $PDFIUM_NAME${NC}"
+    curl -fsSL -o "pdfium.tgz" "$PDFIUM_URL"
+    
+    tar -xzf pdfium.tgz
+    rm pdfium.tgz
+    
+    if [[ -f "lib/$PDFIUM_LIB" ]]; then
+        mv lib/$PDFIUM_LIB .
+        rm -rf lib
+    fi
+    
+    chmod +x "$PDFIUM_LIB" 2>/dev/null || true
+    
+    echo -e "${GREEN}✓ PDFium 库下载完成${NC}"
+}
+
 extract_binaries() {
-    echo -e "${YELLOW}[3/5] 解压文件...${NC}"
+    echo -e "${YELLOW}[4/6] 解压文件...${NC}"
     
     cd "$INSTALL_DIR"
     
@@ -146,7 +179,7 @@ extract_binaries() {
 }
 
 setup_directories() {
-    echo -e "${YELLOW}[4/5] 创建目录结构...${NC}"
+    echo -e "${YELLOW}[5/6] 创建目录结构...${NC}"
     
     mkdir -p "$INSTALL_DIR/logs"
     mkdir -p "$INSTALL_DIR/wiki/raw"
@@ -158,13 +191,16 @@ setup_directories() {
 }
 
 setup_config() {
-    echo -e "${YELLOW}[5/5] 配置环境...${NC}"
+    echo -e "${YELLOW}[6/6] 配置环境...${NC}"
     
     ENV_FILE="$INSTALL_DIR/.env.local"
     
     if [[ ! -f "$ENV_FILE" ]]; then
-        cat > "$ENV_FILE" << 'EOF'
+        cat > "$ENV_FILE" << EOF
 # PDF Module MCP 环境变量配置
+
+# PDFium 库路径
+PDFIUM_LIB_PATH=$INSTALL_DIR/lib/$PDFIUM_LIB
 
 # VLM (Visual Language Model) 配置 - GLM 智谱 AI
 VLM_API_KEY=
@@ -190,9 +226,12 @@ EOF
     
     if [[ ! -f "$INSTALL_DIR/pdf-mcp-cli" ]]; then
         CLI_BIN="$INSTALL_DIR/pdf-mcp-cli"
-        cat > "$CLI_BIN" << EOF
+        cat > "$CLI_BIN" << 'EOF'
 #!/bin/bash
-exec "$INSTALL_DIR/pdf-mcp" "\$@"
+INSTALL_DIR="/opt/pdf-module"
+export PDFIUM_LIB_PATH="$INSTALL_DIR/lib/libpdfium.so"
+export LD_LIBRARY_PATH="$INSTALL_DIR/lib:$LD_LIBRARY_PATH"
+exec "$INSTALL_DIR/pdf-mcp" "$@"
 EOF
         chmod +x "$CLI_BIN"
         echo -e "${GREEN}✓ CLI 快捷方式已创建${NC}"
@@ -215,6 +254,8 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=$INSTALL_DIR
+Environment="PDFIUM_LIB_PATH=$INSTALL_DIR/lib/$PDFIUM_LIB"
+Environment="LD_LIBRARY_PATH=$INSTALL_DIR/lib"
 EnvironmentFile=$INSTALL_DIR/.env.local
 ExecStart=$INSTALL_DIR/pdf-mcp dashboard --port \${DASHBOARD_PORT:-8000}
 Restart=on-failure
@@ -252,6 +293,7 @@ print_success() {
     echo "     http://localhost:8000"
     echo ""
     echo -e "${BLUE}配置文件: $INSTALL_DIR/.env.local${NC}"
+    echo -e "${BLUE}PDFium 库: $INSTALL_DIR/lib/$PDFIUM_LIB${NC}"
     echo -e "${BLUE}安装目录: $INSTALL_DIR${NC}"
     echo ""
     echo -e "${YELLOW}提示: 运行 pdf-mcp-cli 进入交互式配置菜单${NC}"
@@ -265,6 +307,7 @@ main() {
     detect_architecture
     get_latest_version
     download_binaries
+    download_pdfium
     extract_binaries
     setup_directories
     setup_config
