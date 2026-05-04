@@ -88,7 +88,7 @@ impl BatchProcessor {
             .num_threads(self.config.max_files_parallel)
             .thread_name(|i| format!("pdf-batch-{}", i))
             .build()
-            .unwrap();
+            .expect("Failed to create thread pool");
 
         pool.install(|| {
             files
@@ -155,32 +155,6 @@ impl PdfiumEngine {
 }
 ```
 
-**4. 性能优化策略**
-
-```rust
-// crates/pdf-core/src/parallel/work_stealing.rs
-use crossbeam_deque::{Injector, Stealer, Worker};
-
-pub struct AdaptiveScheduler {
-    global_queue: Injector<PageTask>,
-    workers: Vec<Worker<PageTask>>,
-    stealers: Vec<Stealer<PageTask>>,
-}
-
-pub struct PageTask {
-    pub page_index: u32,
-    pub priority: u8,
-}
-
-impl AdaptiveScheduler {
-    pub fn schedule_pages(&self, total_pages: u32) -> Vec<u32> {
-        // 基于页面大小和复杂度的智能调度
-        // 大页面优先处理，小页面用于填补间隙
-        todo!()
-    }
-}
-```
-
 #### 性能指标
 - **目标**: 4核CPU上批量处理速度提升 3-4x
 - **内存**: 控制在单文件处理的 1.5x 以内
@@ -239,17 +213,6 @@ pub enum SamplingContent {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ModelPreferences {
-    pub hints: Vec<ModelHint>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cost_priority: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub speed_priority: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub intelligence_priority: Option<f32>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 pub struct SamplingResponse {
     pub model: String,
     pub role: Role,
@@ -305,115 +268,6 @@ impl SamplingManager {
 
         response_rx.await.map_err(|_| SamplingError::ResponseTimeout)?
     }
-
-    async fn handle_sampling_request(
-        request: SamplingRequest,
-    ) -> Result<SamplingResponse, SamplingError> {
-        // 通过MCP协议向客户端发送采样请求
-        // 客户端调用其LLM并返回结果
-        todo!()
-    }
-}
-```
-
-**3. 集成到PDF提取流程**
-
-```rust
-// crates/pdf-core/src/smart_extraction.rs
-impl McpPdfPipeline {
-    pub async fn extract_with_sampling(
-        &self,
-        file_path: &Path,
-        sampling_manager: &SamplingManager,
-    ) -> PdfResult<EnhancedExtractionResult> {
-        let base_result = self.extract_structured(file_path, &ExtractOptions::default()).await?;
-
-        // 对复杂页面发起采样请求
-        let mut enhanced_pages = Vec::new();
-        for page in &base_result.pages {
-            if Self::needs_enhancement(page) {
-                let sampling_request = SamplingRequest {
-                    messages: vec![
-                        SamplingMessage {
-                            role: Role::User,
-                            content: SamplingContent::Text {
-                                text: format!(
-                                    "Analyze this PDF page content and suggest improvements:\n{}",
-                                    page.text
-                                ),
-                            },
-                        },
-                    ],
-                    model_preferences: Some(ModelPreferences {
-                        hints: vec![ModelHint { name: "claude-3".to_string() }],
-                        speed_priority: Some(0.8),
-                        ..Default::default()
-                    }),
-                    max_tokens: Some(1000),
-                    ..Default::default()
-                };
-
-                let response = sampling_manager.request_sampling(sampling_request).await?;
-                enhanced_pages.push(EnhancedPage {
-                    base: page.clone(),
-                    llm_insights: Some(response),
-                });
-            } else {
-                enhanced_pages.push(EnhancedPage {
-                    base: page.clone(),
-                    llm_insights: None,
-                });
-            }
-        }
-
-        Ok(EnhancedExtractionResult {
-            base: base_result,
-            enhanced_pages,
-        })
-    }
-
-    fn needs_enhancement(page: &PageMetadata) -> bool {
-        page.text.len() < 100 || page.lines.is_empty()
-    }
-}
-```
-
-**4. MCP协议扩展**
-
-```rust
-// crates/pdf-mcp/src/server.rs
-fn handle_initialize(request: &JsonRpcRequest) -> JsonRpcResponse {
-    let result = serde_json::json!({
-        "protocolVersion": "2024-11-05",
-        "serverInfo": {
-            "name": "pdf-mcp",
-            "version": "0.4.0",
-        },
-        "capabilities": {
-            "tools": { "listChanged": false },
-            "sampling": {
-                "supported": true,
-                "messageTypes": ["text", "image"]
-            }
-        }
-    });
-    JsonRpcResponse::success(request.id.clone(), result)
-}
-
-async fn handle_sampling_request(
-    sampling_manager: &SamplingManager,
-    request: &JsonRpcRequest,
-) -> JsonRpcResponse {
-    let params = request.params.as_ref().unwrap();
-    let sampling_request: SamplingRequest = match serde_json::from_value(params.clone()) {
-        Ok(req) => req,
-        Err(e) => return JsonRpcResponse::error(request.id.clone(), JsonRpcError::invalid_params(&e.to_string())),
-    };
-
-    match sampling_manager.request_sampling(sampling_request).await {
-        Ok(response) => JsonRpcResponse::success(request.id.clone(), serde_json::to_value(response).unwrap()),
-        Err(e) => JsonRpcResponse::error(request.id.clone(), JsonRpcError::internal_error(&e.to_string())),
-    }
 }
 ```
 
@@ -449,30 +303,10 @@ console = "0.15"
 // crates/pdf-core/src/progress/tracker.rs
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 pub struct ProgressTracker {
     multi_progress: Arc<MultiProgress>,
     config: ProgressConfig,
-}
-
-#[derive(Debug, Clone)]
-pub struct ProgressConfig {
-    pub show_speed: bool,
-    pub show_eta: bool,
-    pub show_percentage: bool,
-    pub template: String,
-}
-
-impl Default for ProgressConfig {
-    fn default() -> Self {
-        Self {
-            show_speed: true,
-            show_eta: true,
-            show_percentage: true,
-            template: "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({percent}%) {msg}".to_string(),
-        }
-    }
 }
 
 impl ProgressTracker {
@@ -487,9 +321,8 @@ impl ProgressTracker {
         let pb = self.multi_progress.add(ProgressBar::new(total_pages));
         pb.set_style(
             ProgressStyle::with_template(&self.config.template)
-                .unwrap()
+                .expect("Invalid template")
                 .progress_chars("█▉▊▋▌▍▎▏  ")
-                .tick_chars("⠁⠃⠇⡇⣇⣧⣷⣿")
         );
         pb.set_message(format!("Processing {}", file_name));
         pb
@@ -501,7 +334,7 @@ impl ProgressTracker {
             ProgressStyle::with_template(
                 "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} files ({percent}%) ETA: {eta}"
             )
-            .unwrap()
+            .expect("Invalid template")
             .progress_chars("█▉▊▋▌▍▎▏  ")
         );
         pb.set_message("Batch processing");
@@ -510,42 +343,227 @@ impl ProgressTracker {
 }
 ```
 
-**3. 集成到提取流程**
+---
+
+## 二、中期改进方案 (3-6个月)
+
+### 2.1 知识图谱增强
+
+#### 设计目标
+- 实现更智能的知识关联
+- 支持语义相似度搜索
+- 自动知识推理
+
+#### 技术方案
+
+**1. 向量嵌入集成**
 
 ```rust
-// crates/pdf-core/src/extractor.rs
-impl McpPdfPipeline {
-    pub async fn extract_structured_with_progress(
-        &self,
-        file_path: &Path,
-        progress_tracker: &ProgressTracker,
-    ) -> PdfResult<StructuredExtractionResult> {
-        let file_name = file_path.file_name().unwrap().to_str().unwrap();
-        let page_count = self.get_page_count(file_path).await?;
-        
-        let pb = progress_tracker.create_file_progress(file_name, page_count as u64);
-        
-        let result = self.extract_structured_internal(file_path, |page_num| {
-            pb.set_position(page_num as u64);
-            pb.set_message(format!("Page {}/{}", page_num, page_count));
-        }).await?;
+// crates/pdf-core/src/knowledge/index/vector.rs
+use ort::{GraphOptimizationLevel, Session};
 
-        pb.finish_with_message(format!("✓ Completed {} ({} pages)", file_name, page_count));
-        
-        Ok(result)
+pub struct VectorIndex {
+    session: Session,
+    dimension: usize,
+}
+
+impl VectorIndex {
+    pub fn new(model_path: &Path) -> PdfResult<Self> {
+        let session = Session::builder()
+            .map_err(|e| PdfModuleError::VectorIndex(e.to_string()))?
+            .with_optimization_level(GraphOptimizationLevel::All)
+            .map_err(|e| PdfModuleError::VectorIndex(e.to_string()))?
+            .commit_from_file(model_path)
+            .map_err(|e| PdfModuleError::VectorIndex(e.to_string()))?;
+
+        Ok(Self {
+            session,
+            dimension: 768, // 默认维度
+        })
     }
 
-    pub async fn extract_batch_with_progress(
-        &self,
-        files: &[PathBuf],
-        options: &ExtractOptions,
-    ) -> Vec<(PathBuf, PdfResult<StructuredExtractionResult>)> {
-        let tracker = ProgressTracker::new(ProgressConfig::default());
-        let batch_pb = tracker.create_batch_progress(files.len() as u64);
+    pub fn embed(&self, text: &str) -> PdfResult<Vec<f32>> {
+        // 使用ONNX模型生成嵌入向量
+        todo!()
+    }
 
-        let results: Vec<_> = files
-            .iter()
-            .enumerate()
-            .map(|(i, file_path)| {
-                let result = tokio::runtime::Handle::current()
-                    .block_on(self.extract
+    pub fn search(&self, query: &[f32], top_k: usize) -> PdfResult<Vec<SearchHit>> {
+        // 向量相似度搜索
+        todo!()
+    }
+}
+```
+
+**2. 语义链接建议**
+
+```rust
+impl GraphIndex {
+    pub fn suggest_semantic_links(
+        &self,
+        entry_path: &str,
+        vector_index: &VectorIndex,
+        top_k: usize,
+    ) -> PdfResult<Vec<LinkSuggestion>> {
+        // 结合图结构和语义相似度
+        todo!()
+    }
+}
+```
+
+---
+
+### 2.2 中文分词优化
+
+#### 设计目标
+- 从n-gram升级到专业分词
+- 提升搜索精度
+- 减少索引膨胀
+
+#### 技术方案
+
+```rust
+// crates/pdf-core/src/knowledge/index/tokenizer.rs
+use jieba_rs::Jieba;
+
+pub struct JiebaTokenizer {
+    jieba: Jieba,
+}
+
+impl JiebaTokenizer {
+    pub fn new() -> Self {
+        Self {
+            jieba: Jieba::new(),
+        }
+    }
+
+    pub fn tokenize(&self, text: &str) -> Vec<String> {
+        self.jieba.cut(text, false)
+            .into_iter()
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| s.to_string())
+            .collect()
+    }
+}
+```
+
+---
+
+## 三、长期改进方案 (6-12个月)
+
+### 3.1 分布式编译
+
+#### 设计目标
+- 支持大规模PDF编译
+- 分布式任务调度
+- 故障恢复
+
+#### 技术方案
+
+```rust
+// crates/pdf-core/src/distributed/scheduler.rs
+pub struct DistributedScheduler {
+    workers: Vec<WorkerNode>,
+    task_queue: TaskQueue,
+}
+
+impl DistributedScheduler {
+    pub async fn schedule_batch(&self, files: &[PathBuf]) -> PdfResult<Vec<CompileResult>> {
+        // 分片调度
+        // 故障转移
+        // 结果聚合
+        todo!()
+    }
+}
+```
+
+---
+
+### 3.2 知识推理引擎
+
+#### 设计目标
+- 自动知识推理
+- 矛盾检测与解决
+- 知识图谱补全
+
+#### 技术方案
+
+```rust
+// crates/pdf-core/src/knowledge/reasoning/engine.rs
+pub struct ReasoningEngine {
+    graph: GraphIndex,
+    rules: Vec<InferenceRule>,
+}
+
+impl ReasoningEngine {
+    pub fn infer(&self, entry: &KnowledgeEntry) -> PdfResult<Vec<InferredKnowledge>> {
+        // 基于规则的推理
+        // 矛盾检测
+        // 知识补全
+        todo!()
+    }
+}
+```
+
+---
+
+## 四、实施路线图
+
+```
+Phase 1 (1-3月):
+├── Rayon并行处理
+├── MCP采样协议
+└── Indicatif进度追踪
+
+Phase 2 (3-6月):
+├── 向量嵌入索引
+├── Jieba分词优化
+└── 语义链接建议
+
+Phase 3 (6-12月):
+├── 分布式编译
+├── 知识推理引擎
+└── 多模态知识支持
+```
+
+---
+
+## 五、性能基准
+
+### 当前性能
+
+| 操作 | 延迟 | 吞吐量 |
+|------|------|--------|
+| 单PDF提取 | 50-200ms | 5-20 docs/s |
+| 全文搜索 | 1-10ms | 100+ queries/s |
+| 图谱遍历 | <1ms | 1000+ ops/s |
+
+### 目标性能
+
+| 操作 | 当前 | 目标 | 提升 |
+|------|------|------|------|
+| 批量提取 | 5 docs/s | 20 docs/s | 4x |
+| 中文搜索精度 | 70% | 90% | +20% |
+| 语义搜索 | N/A | 支持 | 新增 |
+
+---
+
+## 六、风险评估
+
+| 风险 | 影响 | 概率 | 缓解措施 |
+|------|------|------|----------|
+| FFI稳定性 | 高 | 中 | catch_unwind + 超时 |
+| 内存膨胀 | 中 | 中 | 流式处理 + 限制 |
+| 模型依赖 | 中 | 低 | 本地模型 + 降级 |
+
+---
+
+## 七、结论
+
+本改进方案按照短期、中期、长期三个阶段规划，优先解决性能瓶颈和用户体验问题。关键改进点：
+
+1. **并行处理**: Rayon集成提升批量处理效率
+2. **智能采样**: MCP采样协议增强AI交互
+3. **语义搜索**: 向量索引提升搜索质量
+4. **专业分词**: Jieba替代n-gram
+
+建议按照路线图逐步实施，每个阶段完成后进行性能基准测试验证。
