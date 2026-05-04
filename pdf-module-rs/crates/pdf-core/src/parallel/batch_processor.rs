@@ -75,6 +75,7 @@ impl BatchProcessor {
     ///
     /// Uses `buffer_unordered` to process files concurrently up to the
     /// configured parallelism limit.
+    #[tracing::instrument(skip(self, files, options))]
     pub async fn process_batch_async(
         &self,
         files: Vec<PathBuf>,
@@ -105,6 +106,7 @@ impl BatchProcessor {
     /// * `files` - List of PDF file paths to process
     /// * `options` - Extraction options
     /// * `progress_callback` - Called with (completed_count, total_count) after each file
+    #[tracing::instrument(skip(self, files, options, progress_callback))]
     pub async fn process_batch_with_progress<F>(
         &self,
         files: Vec<PathBuf>,

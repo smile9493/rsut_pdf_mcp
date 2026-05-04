@@ -13,7 +13,6 @@ async-trait = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 thiserror = { workspace = true }
-anyhow = { workspace = true }
 pdf-common = { workspace = true }
 pdfium-render = { workspace = true }
 dotenvy = { workspace = true }
@@ -33,6 +32,8 @@ num_cpus = { workspace = true }
 crossbeam-deque = { workspace = true }
 indicatif = { workspace = true }
 console = { workspace = true }
+tantivy = { workspace = true }
+petgraph = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.10"

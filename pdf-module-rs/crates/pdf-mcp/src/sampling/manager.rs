@@ -4,13 +4,15 @@
 //! channels for backpressure and cancellation tokens for graceful shutdown.
 
 use super::{SamplingRequest, SamplingResponse};
+use super::client::{SamplingClient, SamplingClientConfig};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-/// Errors that can occur during sampling operations.
+pub use super::client::OutgoingRequest;
+
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum SamplingError {
@@ -28,33 +30,25 @@ pub enum SamplingError {
 
     #[error("Internal error: {0}")]
     Internal(String),
+
+    #[error("Client does not support sampling")]
+    ClientNotSupported,
 }
 
-/// Internal task that pairs a request with a oneshot response channel.
 struct SamplingTask {
     request: SamplingRequest,
-    response_tx: oneshot::Sender<Result<SamplingResponse, SamplingError>>,
+    response_tx: tokio::sync::oneshot::Sender<Result<SamplingResponse, SamplingError>>,
 }
 
-/// Manager for MCP sampling requests with backpressure and graceful shutdown.
-///
-/// Implements bounded channel for backpressure and cancellation token for
-/// graceful shutdown support. When the service is at capacity, new requests
-/// are rejected with `SamplingError::Overloaded` so upstream can return 503.
 pub struct SamplingManager {
     request_tx: mpsc::Sender<SamplingTask>,
     cancel_token: CancellationToken,
     active_requests: Arc<AtomicUsize>,
     max_requests: usize,
+    outgoing_tx: Option<mpsc::Sender<OutgoingRequest>>,
 }
 
 impl SamplingManager {
-    /// Create a new sampling manager with specified capacity.
-    ///
-    /// # Arguments
-    ///
-    /// * `capacity` - Bounded channel size (queue depth for pending requests)
-    /// * `max_requests` - Maximum active requests before returning overloaded
     pub fn new(capacity: usize, max_requests: usize) -> Self {
         let (request_tx, mut request_rx) = mpsc::channel::<SamplingTask>(capacity);
         let cancel_token = CancellationToken::new();
@@ -66,7 +60,9 @@ impl SamplingManager {
             loop {
                 tokio::select! {
                     Some(task) = request_rx.recv() => {
-                        let response = Self::handle_sampling_request(task.request).await;
+                        let response = Err(SamplingError::Internal(
+                            "Sampling requires MCP client support. Use SamplingManager::with_client() for full functionality.".to_string()
+                        ));
                         let _ = task.response_tx.send(response);
                         active_requests_clone.fetch_sub(1, Ordering::Relaxed);
                     }
@@ -84,23 +80,115 @@ impl SamplingManager {
             cancel_token,
             active_requests,
             max_requests,
+            outgoing_tx: None,
         }
     }
 
-    /// Request sampling with backpressure support.
-    ///
-    /// Returns `SamplingError::Overloaded` when service is at capacity,
-    /// allowing upstream to return 503 to clients.
+    pub fn with_client(capacity: usize, config: SamplingClientConfig) -> (Self, mpsc::Receiver<OutgoingRequest>) {
+        let (request_tx, mut request_rx) = mpsc::channel::<SamplingTask>(capacity);
+        let (outgoing_tx, outgoing_rx) = mpsc::channel::<OutgoingRequest>(capacity);
+        let cancel_token = CancellationToken::new();
+        let cancel_token_clone = cancel_token.clone();
+        let active_requests = Arc::new(AtomicUsize::new(0));
+        let active_requests_clone = Arc::clone(&active_requests);
+        let max_requests = config.max_concurrent;
+        let timeout_secs = config.timeout_secs;
+
+        let outgoing_tx_clone = outgoing_tx.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    Some(task) = request_rx.recv() => {
+                        let outgoing_tx = outgoing_tx_clone.clone();
+                        tokio::spawn(async move {
+                            let id = std::sync::atomic::AtomicU64::new(1);
+                            let req_id = id.fetch_add(1, Ordering::Relaxed);
+                            
+                            let outgoing = OutgoingRequest {
+                                id: req_id,
+                                request: task.request,
+                            };
+                            
+                            if outgoing_tx.send(outgoing).await.is_err() {
+                                let _ = task.response_tx.send(Err(SamplingError::ChannelClosed));
+                                return;
+                            }
+                            
+                            let timeout_duration = std::time::Duration::from_secs(timeout_secs);
+                            tokio::time::sleep(timeout_duration).await;
+                            let _ = task.response_tx.send(Err(SamplingError::ResponseTimeout));
+                        });
+                        active_requests_clone.fetch_sub(1, Ordering::Relaxed);
+                    }
+                    _ = cancel_token_clone.cancelled() => {
+                        tracing::info!("Sampling manager shutting down gracefully");
+                        break;
+                    }
+                    else => break,
+                }
+            }
+        });
+
+        (
+            Self {
+                request_tx,
+                cancel_token,
+                active_requests,
+                max_requests,
+                outgoing_tx: Some(outgoing_tx),
+            },
+            outgoing_rx,
+        )
+    }
+
+    pub fn with_sampling_client(
+        capacity: usize,
+        max_requests: usize,
+        client: Arc<SamplingClient>,
+    ) -> Self {
+        let (request_tx, mut request_rx) = mpsc::channel::<SamplingTask>(capacity);
+        let cancel_token = CancellationToken::new();
+        let cancel_token_clone = cancel_token.clone();
+        let active_requests = Arc::new(AtomicUsize::new(0));
+        let active_requests_clone = Arc::clone(&active_requests);
+
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    Some(task) = request_rx.recv() => {
+                        let client = Arc::clone(&client);
+                        tokio::spawn(async move {
+                            let result = client.request_sampling(task.request).await;
+                            let _ = task.response_tx.send(result);
+                        });
+                        active_requests_clone.fetch_sub(1, Ordering::Relaxed);
+                    }
+                    _ = cancel_token_clone.cancelled() => {
+                        tracing::info!("Sampling manager shutting down gracefully");
+                        break;
+                    }
+                    else => break,
+                }
+            }
+        });
+
+        Self {
+            request_tx,
+            cancel_token,
+            active_requests,
+            max_requests,
+            outgoing_tx: None,
+        }
+    }
+
     pub async fn request_sampling(
         &self,
         request: SamplingRequest,
     ) -> Result<SamplingResponse, SamplingError> {
-        // Check if shutting down
         if self.cancel_token.is_cancelled() {
             return Err(SamplingError::ShuttingDown);
         }
 
-        // Check resource limit (backpressure)
         let current = self.active_requests.fetch_add(1, Ordering::Relaxed);
         if current >= self.max_requests {
             self.active_requests.fetch_sub(1, Ordering::Relaxed);
@@ -109,7 +197,7 @@ impl SamplingManager {
             ));
         }
 
-        let (response_tx, response_rx) = oneshot::channel();
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
 
         let result = self
             .request_tx
@@ -119,8 +207,7 @@ impl SamplingManager {
             })
             .await
             .map_err(|_| {
-                self.active_requests
-                    .fetch_sub(1, Ordering::Relaxed);
+                self.active_requests.fetch_sub(1, Ordering::Relaxed);
                 SamplingError::ChannelClosed
             });
 
@@ -130,33 +217,20 @@ impl SamplingManager {
         }
     }
 
-    /// Gracefully shutdown the sampling manager.
     pub fn shutdown(&self) {
         self.cancel_token.cancel();
     }
 
-    /// Check if the manager is shutting down.
     pub fn is_shutting_down(&self) -> bool {
         self.cancel_token.is_cancelled()
     }
 
-    /// Get the number of currently active requests.
     pub fn active_request_count(&self) -> usize {
         self.active_requests.load(Ordering::Relaxed)
     }
 
-    /// Handle a single sampling request.
-    ///
-    /// In a real implementation, this would forward the request to an LLM
-    /// via the MCP client's sampling endpoint.
-    async fn handle_sampling_request(
-        _request: SamplingRequest,
-    ) -> Result<SamplingResponse, SamplingError> {
-        // TODO: Implement actual LLM call via MCP client sampling endpoint
-        // For now, return a placeholder response
-        Err(SamplingError::Internal(
-            "Sampling not yet implemented - requires MCP client support".to_string(),
-        ))
+    pub fn outgoing_sender(&self) -> Option<mpsc::Sender<OutgoingRequest>> {
+        self.outgoing_tx.clone()
     }
 }
 
@@ -168,17 +242,13 @@ mod tests {
     async fn test_sampling_manager_backpressure() {
         let manager = SamplingManager::new(2, 2);
 
-        // Send requests up to capacity
         let req1 = manager.request_sampling(SamplingRequest::default());
         let req2 = manager.request_sampling(SamplingRequest::default());
 
-        // Wait for the first two to complete (they will error with Internal since not implemented)
         let _ = req1.await;
         let _ = req2.await;
 
-        // After draining, a new request should work
         let req3 = manager.request_sampling(SamplingRequest::default());
-        // This should not be overloaded since we've released slots
         assert!(!matches!(req3.await, Err(SamplingError::Overloaded(_))));
     }
 
@@ -191,10 +261,17 @@ mod tests {
         assert!(matches!(result, Err(SamplingError::ShuttingDown)));
     }
 
-    #[test]
-    fn test_active_request_count() {
+    #[tokio::test]
+    async fn test_active_request_count() {
         let manager = SamplingManager::new(10, 5);
         assert_eq!(manager.active_request_count(), 0);
         assert!(!manager.is_shutting_down());
+    }
+
+    #[tokio::test]
+    async fn test_with_client() {
+        let config = SamplingClientConfig::default();
+        let (manager, _rx) = SamplingManager::with_client(10, config);
+        assert_eq!(manager.active_request_count(), 0);
     }
 }

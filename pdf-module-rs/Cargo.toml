@@ -44,6 +44,9 @@ num_cpus = "1.16"
 crossbeam-deque = "0.8"
 # Async utilities
 tokio-util = "0.7"
+# Knowledge indexing
+tantivy = "0.22"
+petgraph = "0.7"
 # Progress tracking
 indicatif = "0.17"
 console = "0.15"

@@ -87,6 +87,7 @@ impl McpPdfPipeline {
         })
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn extract_text(&self, file_path: &Path) -> PdfResult<TextExtractionResult> {
         let ctx = self.probe_and_load(file_path)?;
 
@@ -119,6 +120,7 @@ impl McpPdfPipeline {
         }
     }
 
+    #[tracing::instrument(skip(self, _options))]
     pub async fn extract_structured(
         &self,
         file_path: &Path,
@@ -143,6 +145,7 @@ impl McpPdfPipeline {
         }
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn get_page_count(&self, file_path: &Path) -> PdfResult<u32> {
         let ctx = self.probe_and_load(file_path)?;
         PdfiumEngine::get_page_count_from_mmap(&ctx.loader)

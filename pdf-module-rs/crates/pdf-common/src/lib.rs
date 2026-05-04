@@ -16,6 +16,16 @@
 //! - [`ToolContext`]: Execution context for tool handlers
 //! - [`ToolExecutionOptions`]: Configuration options for tool execution
 
+#![forbid(unsafe_op_in_unsafe_fn)]
+#![warn(clippy::all)]
+#![warn(clippy::await_holding_lock)]
+#![warn(clippy::await_holding_refcell_ref)]
+#![warn(clippy::large_stack_frames)]
+#![warn(clippy::undocumented_unsafe_blocks)]
+#![warn(clippy::todo)]
+#![warn(clippy::dbg_macro)]
+#![cfg_attr(not(test), warn(clippy::unwrap_used))]
+
 pub mod config;
 pub mod dto;
 pub mod error;

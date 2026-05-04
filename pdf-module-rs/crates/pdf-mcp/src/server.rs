@@ -1,13 +1,18 @@
+use crate::sampling::{
+    create_sampling_jsonrpc_request, parse_sampling_response, OutgoingRequest,
+    SamplingClient, SamplingClientConfig,
+};
 use pdf_core::{
     dto::*,
     wiki::{AgentPayload, WikiStorage},
-    McpPdfPipeline, PathValidationConfig,
+    FulltextIndex, GraphIndex, KnowledgeEngine, McpPdfPipeline, PathValidationConfig,
 };
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::signal;
+use tokio::sync::mpsc;
 use tracing::{debug, error, info};
 
 static SHUTDOWN_FLAG: AtomicBool = AtomicBool::new(false);
@@ -167,49 +172,110 @@ pub async fn run_stdio(pipeline: Arc<McpPdfPipeline>) -> anyhow::Result<()> {
         }
     });
 
-    let stdin = std::io::stdin();
+    let sampling_config = SamplingClientConfig::default();
+    let (outgoing_tx, mut outgoing_rx) = mpsc::channel::<OutgoingRequest>(100);
+    let sampling_client = Arc::new(SamplingClient::with_sender(
+        sampling_config.timeout_secs,
+        outgoing_tx.clone(),
+    ));
+    let pending_requests = sampling_client.pending_requests();
+
     let stdout = std::io::stdout();
     let mut stdout_lock = stdout.lock();
-    let stdin_lock = stdin.lock();
 
-    for line in stdin_lock.lines() {
-        if SHUTDOWN_FLAG.load(Ordering::SeqCst) || shutdown_notifier.load(Ordering::SeqCst) {
-            info!("Shutting down gracefully...");
-            break;
+    let (stdin_tx, mut stdin_rx) = mpsc::channel::<String>(100);
+    
+    tokio::task::spawn_blocking(move || {
+        let stdin = std::io::stdin();
+        for line in stdin.lock().lines() {
+            match line {
+                Ok(l) => {
+                    if stdin_tx.blocking_send(l).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
         }
+    });
 
-        let line = line?;
-        info!(
-            "Received request: {}",
-            if line.len() > 100 {
-                &line[..100]
-            } else {
-                &line
-            }
-        );
+    let _sampling_client_ref = Arc::clone(&sampling_client);
 
-        let request: JsonRpcRequest = match serde_json::from_str::<JsonRpcRequest>(&line) {
-            Ok(req) => {
-                info!("Parsed request: method={}", req.method);
-                req
-            }
-            Err(e) => {
-                error!("Failed to parse request: {}", e);
-                let response = JsonRpcResponse::error(None, JsonRpcError::parse_error());
-                write_response(&mut stdout_lock, &response)?;
-                continue;
-            }
-        };
+    loop {
+        tokio::select! {
+            Some(line) = stdin_rx.recv() => {
+                if SHUTDOWN_FLAG.load(Ordering::SeqCst) || shutdown_notifier.load(Ordering::SeqCst) {
+                    info!("Shutting down gracefully...");
+                    break;
+                }
 
-        let response = handle_request(&pipeline, request).await;
-        if let Some(resp) = response {
-            info!("Sending response for id={:?}", resp.id);
-            write_response(&mut stdout_lock, &resp)?;
-        } else {
-            info!("No response needed (notification)");
+                info!(
+                    "Received: {}",
+                    if line.len() > 100 { &line[..100] } else { &line }
+                );
+
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
+                    if value.get("method").is_none() && (value.get("result").is_some() || value.get("error").is_some()) {
+                        match parse_sampling_response(&value) {
+                            Ok((id, result)) => {
+                                info!("Received sampling response for id={}", id);
+                                let pending = pending_requests.clone();
+                                tokio::spawn(async move {
+                                    let response_tx = {
+                                        let mut pending = pending.write().await;
+                                        pending.remove(&id)
+                                    };
+                                    if let Some(tx) = response_tx {
+                                        let _ = tx.send(result);
+                                    }
+                                });
+                                continue;
+                            }
+                            Err(e) => {
+                                error!("Failed to parse sampling response: {}", e);
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                let request: JsonRpcRequest = match serde_json::from_str::<JsonRpcRequest>(&line) {
+                    Ok(req) => {
+                        info!("Parsed request: method={}", req.method);
+                        req
+                    }
+                    Err(e) => {
+                        error!("Failed to parse request: {}", e);
+                        let response = JsonRpcResponse::error(None, JsonRpcError::parse_error());
+                        write_response(&mut stdout_lock, &response)?;
+                        continue;
+                    }
+                };
+
+                let response = handle_request(&pipeline, request).await;
+                if let Some(resp) = response {
+                    info!("Sending response for id={:?}", resp.id);
+                    write_response(&mut stdout_lock, &resp)?;
+                }
+            }
+
+            Some(outgoing) = outgoing_rx.recv() => {
+                let json_request = create_sampling_jsonrpc_request(outgoing.id, outgoing.request);
+                let json_str = serde_json::to_string(&json_request)?;
+                info!("Sending sampling request: id={}", outgoing.id);
+                writeln!(stdout_lock, "{}", json_str)?;
+                stdout_lock.flush()?;
+            }
+
+            _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
+                if SHUTDOWN_FLAG.load(Ordering::SeqCst) || shutdown_notifier.load(Ordering::SeqCst) {
+                    break;
+                }
+            }
         }
     }
 
+    drop(stdin_rx);
     SHUTDOWN_FLAG.store(true, Ordering::SeqCst);
     info!("Server shut down gracefully");
     Ok(())
@@ -247,9 +313,9 @@ fn handle_initialize(request: &JsonRpcRequest) -> JsonRpcResponse {
     let result = serde_json::json!({
         "protocolVersion": "2024-11-05",
         "serverInfo": {
-            "name": "pdf-mcp",
-            "version": "0.4.0",
-            "description": "Pure PDF extraction MCP pipe — pdfium engine, stdio only, zero state, sampling support"
+            "name": "rsut-pdf-mcp",
+            "version": "0.6.0",
+            "description": "AI-native knowledge compilation engine — PDF extraction, Karpathy compiler pattern, Tantivy fulltext search (CJK-aware), petgraph knowledge graph, hierarchical compilation, dynamic reasoning. Pure Rust, single binary."
         },
         "capabilities": {
             "tools": { "listChanged": false },
@@ -258,7 +324,7 @@ fn handle_initialize(request: &JsonRpcRequest) -> JsonRpcResponse {
                 "messageTypes": ["text", "image"]
             }
         },
-        "instructions": "PDF extraction pipe. Tools: extract_text, extract_structured, get_page_count, search_keywords. Supports server-initiated LLM sampling for complex analysis."
+        "instructions": "Knowledge engine with 20 tools. PDF extraction: extract_text, extract_structured, get_page_count, search_keywords, extrude_to_server_wiki, extrude_to_agent_payload. Compilation: compile_to_wiki, incremental_compile, recompile_entry, aggregate_entries, check_quality. Indexing: search_knowledge, rebuild_index, get_entry_context, find_orphans, suggest_links, export_concept_map. Reasoning: micro_compile, hypothesis_test."
     });
     JsonRpcResponse::success(request.id.clone(), result)
 }
@@ -368,6 +434,237 @@ fn handle_tools_list(request: &JsonRpcRequest) -> JsonRpcResponse {
                 "required": ["file_path"]
             }),
         },
+        // === Knowledge Engine Tools ===
+        ToolDefinition {
+            name: "compile_to_wiki".to_string(),
+            description: "Compile a PDF into the knowledge base: extract text, save to raw/, generate compilation prompt for AI. This is the primary entry point for the Karpathy compiler pattern.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "pdf_path": {
+                        "type": "string",
+                        "description": "Absolute path to the PDF file"
+                    },
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    },
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain classification (e.g. 'IT', 'Math'). Default: '未分类'"
+                    }
+                },
+                "required": ["pdf_path", "knowledge_base"]
+            }),
+        },
+        ToolDefinition {
+            name: "incremental_compile".to_string(),
+            description: "Scan raw/ directory for new or changed PDFs and compile only those that need it. Uses SHA-256 hash comparison for change detection.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    }
+                },
+                "required": ["knowledge_base"]
+            }),
+        },
+        ToolDefinition {
+            name: "search_knowledge".to_string(),
+            description: "Full-text search across all wiki entries using Tantivy. Returns ranked results with snippets.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Search query (supports keywords, phrases, boolean)"
+                    },
+                    "limit": {
+                        "type": "number",
+                        "description": "Maximum number of results (default: 10)"
+                    }
+                },
+                "required": ["knowledge_base", "query"]
+            }),
+        },
+        ToolDefinition {
+            name: "rebuild_index".to_string(),
+            description: "Rebuild all indexes (Tantivy fulltext + petgraph link graph) from wiki Markdown files. Use after bulk changes or for recovery.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    }
+                },
+                "required": ["knowledge_base"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_entry_context".to_string(),
+            description: "Get N-hop neighbors of a knowledge entry (by link relationships, tag co-occurrence). Returns connected entries for context expansion.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    },
+                    "entry_path": {
+                        "type": "string",
+                        "description": "Relative path of the entry within wiki/ (e.g. 'it/http2_multiplex.md')"
+                    },
+                    "hops": {
+                        "type": "number",
+                        "description": "Maximum number of hops to traverse (default: 2)"
+                    }
+                },
+                "required": ["knowledge_base", "entry_path"]
+            }),
+        },
+        ToolDefinition {
+            name: "find_orphans".to_string(),
+            description: "Find knowledge entries with no incoming or outgoing related/contradiction links. These are candidates for integration.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    }
+                },
+                "required": ["knowledge_base"]
+            }),
+        },
+        ToolDefinition {
+            name: "suggest_links".to_string(),
+            description: "Suggest potential links for a knowledge entry based on tag similarity (Jaccard index). Helps discover hidden connections.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    },
+                    "entry_path": {
+                        "type": "string",
+                        "description": "Relative path of the entry within wiki/"
+                    },
+                    "top_k": {
+                        "type": "number",
+                        "description": "Maximum number of suggestions (default: 10)"
+                    }
+                },
+                "required": ["knowledge_base", "entry_path"]
+            }),
+        },
+        ToolDefinition {
+            name: "export_concept_map".to_string(),
+            description: "Export a local concept map around an entry as Mermaid.js text. Shows relationships within N hops for visualization.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    },
+                    "entry_path": {
+                        "type": "string",
+                        "description": "Relative path of the center entry within wiki/"
+                    },
+                    "depth": {
+                        "type": "number",
+                        "description": "Number of hops to include (default: 2)"
+                    }
+                },
+                "required": ["knowledge_base", "entry_path"]
+            }),
+        },
+        ToolDefinition {
+            name: "check_quality".to_string(),
+            description: "Analyze wiki quality: detect missing tags, orphan entries, broken links, style issues. Returns a comprehensive report.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    }
+                },
+                "required": ["knowledge_base"]
+            }),
+        },
+        ToolDefinition {
+            name: "micro_compile".to_string(),
+            description: "On-demand extraction from a PDF for the current conversation context. Results are NOT saved to wiki — they are injected directly into the AI session for immediate use.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "pdf_path": {
+                        "type": "string",
+                        "description": "Absolute path to the PDF file"
+                    },
+                    "page_range": {
+                        "type": "string",
+                        "description": "Page range to extract (e.g. '1-5', '3,7,12'). Default: all pages"
+                    }
+                },
+                "required": ["pdf_path"]
+            }),
+        },
+        ToolDefinition {
+            name: "aggregate_entries".to_string(),
+            description: "Identify clusters of related L1 wiki entries that can be aggregated into L2 summary entries. Returns clusters with shared tags for AI to synthesize. (Phase 3: Hierarchical compilation)".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    }
+                },
+                "required": ["knowledge_base"]
+            }),
+        },
+        ToolDefinition {
+            name: "hypothesis_test".to_string(),
+            description: "Find pairs of entries that explicitly contradict each other, and generate a debate framework for AI to resolve the contradictions. Returns contradiction pairs with entry context for AI-driven analysis. (Phase 4: Dynamic reasoning)".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    }
+                },
+                "required": ["knowledge_base"]
+            }),
+        },
+        ToolDefinition {
+            name: "recompile_entry".to_string(),
+            description: "Recompile a single wiki entry: bumps version, creates backup, checks if source PDF changed, and generates a recompile prompt for AI. Use for quality drift correction.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    },
+                    "entry_path": {
+                        "type": "string",
+                        "description": "Relative path of the entry within wiki/ (e.g. 'it/concept.md')"
+                    }
+                },
+                "required": ["knowledge_base", "entry_path"]
+            }),
+        },
     ];
 
     JsonRpcResponse::success(request.id.clone(), serde_json::json!({ "tools": tools }))
@@ -409,6 +706,20 @@ async fn handle_tools_call(
         "search_keywords" => handle_search_keywords(pipeline, &arguments).await,
         "extrude_to_server_wiki" => handle_extrude_to_server_wiki(pipeline, &arguments).await,
         "extrude_to_agent_payload" => handle_extrude_to_agent_payload(pipeline, &arguments).await,
+        // Knowledge Engine tools
+        "compile_to_wiki" => handle_compile_to_wiki(pipeline, &arguments).await,
+        "incremental_compile" => handle_incremental_compile(pipeline, &arguments).await,
+        "search_knowledge" => handle_search_knowledge(&arguments).await,
+        "rebuild_index" => handle_rebuild_index(&arguments).await,
+        "get_entry_context" => handle_get_entry_context(&arguments).await,
+        "find_orphans" => handle_find_orphans(&arguments).await,
+        "suggest_links" => handle_suggest_links(&arguments).await,
+        "export_concept_map" => handle_export_concept_map(&arguments).await,
+        "check_quality" => handle_check_quality(&arguments).await,
+        "micro_compile" => handle_micro_compile(pipeline, &arguments).await,
+        "aggregate_entries" => handle_aggregate_entries(&arguments).await,
+        "hypothesis_test" => handle_hypothesis_test(&arguments).await,
+        "recompile_entry" => handle_recompile_entry(&arguments).await,
         _ => {
             return JsonRpcResponse::error(
                 request.id.clone(),
@@ -740,4 +1051,389 @@ async fn handle_extrude_to_agent_payload(
     let markdown = payload.to_markdown();
 
     Ok(vec![Content::text(markdown)])
+}
+
+// === Knowledge Engine Tool Handlers ===
+
+fn parse_kb_path(args: &serde_json::Value) -> anyhow::Result<std::path::PathBuf> {
+    let kb = args["knowledge_base"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing knowledge_base"))?;
+    Ok(std::path::PathBuf::from(kb))
+}
+
+async fn handle_compile_to_wiki(
+    pipeline: &Arc<McpPdfPipeline>,
+    args: &serde_json::Value,
+) -> anyhow::Result<Vec<Content>> {
+    let pdf_path_str = args["pdf_path"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing pdf_path"))?;
+    let pdf_path = std::path::Path::new(pdf_path_str);
+    let kb_path = parse_kb_path(args)?;
+    let domain = args["domain"].as_str();
+
+    pdf_core::FileValidator::validate_path_safety(pdf_path, &default_path_config())
+        .map_err(|e| anyhow::anyhow!("Path validation failed: {}", e))?;
+
+    let engine = KnowledgeEngine::new(Arc::clone(pipeline), &kb_path)?;
+    let result = engine.compile_to_wiki(pdf_path, domain).await?;
+
+    Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
+}
+
+async fn handle_incremental_compile(
+    pipeline: &Arc<McpPdfPipeline>,
+    args: &serde_json::Value,
+) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+    let engine = KnowledgeEngine::new(Arc::clone(pipeline), &kb_path)?;
+    let raw_dir = engine.raw_dir();
+    let result = engine.incremental_compile(&raw_dir).await?;
+
+    Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
+}
+
+async fn handle_search_knowledge(
+    args: &serde_json::Value,
+) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+    let query = args["query"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing query"))?;
+    let limit = args["limit"].as_u64().unwrap_or(10) as usize;
+
+    let idx = FulltextIndex::open_or_create(&kb_path)?;
+
+    // Auto-rebuild if index is empty
+    let wiki_dir = kb_path.join("wiki");
+    if wiki_dir.exists() {
+        let sample = idx.search("*", 1);
+        let needs_rebuild = match sample {
+            Ok(results) => results.is_empty(),
+            Err(_) => true,
+        };
+        if needs_rebuild {
+            idx.rebuild(&wiki_dir)?;
+        }
+    }
+
+    let hits = idx.search(query, limit)?;
+    Ok(vec![Content::text(serde_json::to_string_pretty(&hits)?)])
+}
+
+async fn handle_rebuild_index(
+    args: &serde_json::Value,
+) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+    let wiki_dir = kb_path.join("wiki");
+
+    // Rebuild Tantivy
+    let ft_idx = FulltextIndex::open_or_create(&kb_path)?;
+    let ft_count = ft_idx.rebuild(&wiki_dir)?;
+
+    // Rebuild petgraph
+    let mut g_idx = GraphIndex::new();
+    let g_count = g_idx.rebuild(&wiki_dir)?;
+
+    let result = serde_json::json!({
+        "status": "success",
+        "fulltext_entries_indexed": ft_count,
+        "graph_nodes": g_count,
+        "graph_edges": g_idx.edge_count(),
+        "message": "All indexes rebuilt from wiki/ files."
+    });
+    Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
+}
+
+async fn handle_get_entry_context(
+    args: &serde_json::Value,
+) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+    let entry_path = args["entry_path"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing entry_path"))?;
+    let hops = args["hops"].as_u64().unwrap_or(2) as u32;
+
+    let mut graph = GraphIndex::new();
+    let wiki_dir = kb_path.join("wiki");
+    graph.rebuild(&wiki_dir)?;
+
+    let neighbors = graph.get_neighbors(entry_path, hops);
+
+    let result = serde_json::json!({
+        "entry": entry_path,
+        "hops": hops,
+        "neighbors": neighbors,
+        "total": neighbors.len()
+    });
+    Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
+}
+
+async fn handle_find_orphans(
+    args: &serde_json::Value,
+) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+
+    let mut graph = GraphIndex::new();
+    let wiki_dir = kb_path.join("wiki");
+    graph.rebuild(&wiki_dir)?;
+
+    let orphans = graph.find_orphans();
+
+    let result = serde_json::json!({
+        "orphan_count": orphans.len(),
+        "entries": orphans,
+        "message": if orphans.is_empty() {
+            "No orphan entries found. All entries have at least one link.".to_string()
+        } else {
+            format!("{} entries have no links. Consider integrating them.", orphans.len())
+        }
+    });
+    Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
+}
+
+async fn handle_suggest_links(
+    args: &serde_json::Value,
+) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+    let entry_path = args["entry_path"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing entry_path"))?;
+    let top_k = args["top_k"].as_u64().unwrap_or(10) as usize;
+
+    let mut graph = GraphIndex::new();
+    let wiki_dir = kb_path.join("wiki");
+    graph.rebuild(&wiki_dir)?;
+
+    let suggestions = graph.suggest_links(entry_path, top_k);
+
+    let result = serde_json::json!({
+        "entry": entry_path,
+        "suggestions": suggestions,
+        "total": suggestions.len()
+    });
+    Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
+}
+
+async fn handle_export_concept_map(
+    args: &serde_json::Value,
+) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+    let entry_path = args["entry_path"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing entry_path"))?;
+    let depth = args["depth"].as_u64().unwrap_or(2) as u32;
+
+    let mut graph = GraphIndex::new();
+    let wiki_dir = kb_path.join("wiki");
+    graph.rebuild(&wiki_dir)?;
+
+    let mermaid = graph.export_concept_map(entry_path, depth);
+
+    let result = serde_json::json!({
+        "entry": entry_path,
+        "depth": depth,
+        "mermaid": mermaid,
+        "usage": "Paste the mermaid field into any Mermaid.js renderer (e.g. Obsidian, GitHub, mermaid.live)"
+    });
+    Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
+}
+
+async fn handle_check_quality(
+    args: &serde_json::Value,
+) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+    let wiki_dir = kb_path.join("wiki");
+
+    let report = pdf_core::knowledge::quality::analyze_wiki(&wiki_dir)?;
+
+    let result = serde_json::json!({
+        "total_entries": report.total_entries,
+        "avg_quality_score": format!("{:.1}%", report.avg_quality_score * 100.0),
+        "domains": report.domains.iter().collect::<Vec<_>>(),
+        "issues_count": report.issues.len(),
+        "orphan_count": report.orphan_entries.len(),
+        "broken_links_count": report.broken_links.len(),
+        "report_markdown": report.to_markdown(),
+        "has_errors": report.has_errors(),
+        "has_warnings": report.has_warnings()
+    });
+    Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
+}
+
+async fn handle_micro_compile(
+    pipeline: &Arc<McpPdfPipeline>,
+    args: &serde_json::Value,
+) -> anyhow::Result<Vec<Content>> {
+    let pdf_path_str = args["pdf_path"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing pdf_path"))?;
+    let pdf_path = std::path::Path::new(pdf_path_str);
+
+    pdf_core::FileValidator::validate_path_safety(pdf_path, &default_path_config())
+        .map_err(|e| anyhow::anyhow!("Path validation failed: {}", e))?;
+
+    let page_range = args["page_range"].as_str();
+
+    let result = pipeline
+        .extract_structured(pdf_path, &ExtractOptions::default())
+        .await
+        .map_err(|e| anyhow::anyhow!("Extraction failed: {}", e))?;
+
+    let text = if let Some(range) = page_range {
+        // Parse page range like "1-5" or "3,7,12"
+        let pages_to_include = parse_page_range(range, result.page_count);
+        let filtered: Vec<String> = result
+            .pages
+            .iter()
+            .filter(|p| pages_to_include.contains(&p.page_number))
+            .map(|p| format!("## Page {}\n\n{}", p.page_number, p.text))
+            .collect();
+        filtered.join("\n\n")
+    } else {
+        result.extracted_text.clone()
+    };
+
+    let source_name = pdf_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown");
+
+    let output = format!(
+        r#"# 微编译结果: {}
+
+> 注意: 此内容仅用于当前对话上下文，不会保存到 wiki。
+> 如需持久化，请使用 `compile_to_wiki` 工具。
+
+- 页数: {}{}
+
+---
+
+{}
+"#,
+        source_name,
+        result.page_count,
+        if let Some(r) = page_range {
+            format!("\n- 提取范围: {}", r)
+        } else {
+            String::new()
+        },
+        text
+    );
+
+    Ok(vec![Content::text(output)])
+}
+
+fn parse_page_range(range: &str, max_page: u32) -> Vec<u32> {
+    let mut pages = Vec::new();
+    for part in range.split(',') {
+        let part = part.trim();
+        if let Some(dash_pos) = part.find('-') {
+            if let (Ok(start), Ok(end)) = (
+                part[..dash_pos].trim().parse::<u32>(),
+                part[dash_pos + 1..].trim().parse::<u32>(),
+            ) {
+                for p in start..=end.min(max_page) {
+                    pages.push(p);
+                }
+            }
+        } else if let Ok(p) = part.parse::<u32>() {
+            if p <= max_page {
+                pages.push(p);
+            }
+        }
+    }
+    pages.sort();
+    pages.dedup();
+    pages
+}
+
+async fn handle_aggregate_entries(
+    args: &serde_json::Value,
+) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+
+    let pipeline = {
+        let config = pdf_core::ServerConfig::default();
+        let p = pdf_core::McpPdfPipeline::new(&config)
+            .map_err(|e| anyhow::anyhow!("Failed to create pipeline: {}", e))?;
+        std::sync::Arc::new(p)
+    };
+    let engine = pdf_core::KnowledgeEngine::new(pipeline, &kb_path)?;
+
+    let candidates = engine.identify_aggregation_candidates()?;
+
+    let result = serde_json::json!({
+        "candidates": candidates,
+        "total_clusters": candidates.len(),
+        "instructions": if candidates.is_empty() {
+            "No aggregation candidates found. Entries may not have enough shared tags to form clusters.".to_string()
+        } else {
+            "For each cluster, create an L2 summary entry that synthesizes the key ideas. Use 'aggregated_from' field in front matter to record source entries.".to_string()
+        }
+    });
+    Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
+}
+
+async fn handle_hypothesis_test(
+    args: &serde_json::Value,
+) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+
+    let pipeline = {
+        let config = pdf_core::ServerConfig::default();
+        let p = pdf_core::McpPdfPipeline::new(&config)
+            .map_err(|e| anyhow::anyhow!("Failed to create pipeline: {}", e))?;
+        std::sync::Arc::new(p)
+    };
+    let engine = pdf_core::KnowledgeEngine::new(pipeline, &kb_path)?;
+
+    let contradictions = engine.find_contradictions()?;
+
+    // Read entry content for each contradiction pair
+    let wiki_dir = kb_path.join("wiki");
+    let mut enriched = Vec::new();
+    for mut pair in contradictions {
+        // Try to read entry B's title
+        let path_b = wiki_dir.join(&pair.entry_b);
+        if let Ok(content) = std::fs::read_to_string(&path_b) {
+            if let Some(entry) = pdf_core::knowledge::KnowledgeEntry::from_markdown(&content) {
+                pair.title_b = entry.title;
+            }
+        }
+        enriched.push(pair);
+    }
+
+    let result = serde_json::json!({
+        "contradiction_pairs": enriched,
+        "total": enriched.len(),
+        "instructions": if enriched.is_empty() {
+            "No explicit contradictions found. Use 'suggest_links' to discover implicit tensions between entries.".to_string()
+        } else {
+            "For each pair, read both entries and conduct a structured debate: 1) State the core claim of each entry, 2) Identify the precise point of disagreement, 3) Evaluate supporting evidence, 4) Propose a resolution or mark as 'open question'. Write the resolution into both entries' 'contradictions' field with a note.".to_string()
+        }
+    });
+    Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
+}
+
+async fn handle_recompile_entry(
+    args: &serde_json::Value,
+) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+    let entry_path = args["entry_path"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing entry_path"))?;
+
+    let pipeline = {
+        let config = pdf_core::ServerConfig::default();
+        let p = pdf_core::McpPdfPipeline::new(&config)
+            .map_err(|e| anyhow::anyhow!("Failed to create pipeline: {}", e))?;
+        std::sync::Arc::new(p)
+    };
+    let engine = pdf_core::KnowledgeEngine::new(pipeline, &kb_path)?;
+
+    let result = engine.recompile_entry(std::path::Path::new(entry_path))?;
+
+    Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
 }

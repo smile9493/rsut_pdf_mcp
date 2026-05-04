@@ -28,6 +28,10 @@ features = ["console"]
 version = "0.3"
 optional = true
 
+[dependencies.console_error_panic_hook]
+version = "0.1"
+optional = true
+
 [features]
 default = []
-wasm = ["wasm-bindgen", "web-sys", "js-sys"]
+wasm = ["wasm-bindgen", "web-sys", "js-sys", "console_error_panic_hook"]

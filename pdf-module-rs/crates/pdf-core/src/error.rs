@@ -247,6 +247,12 @@ impl From<pdf_common::PdfError> for PdfModuleError {
     }
 }
 
+impl From<serde_yaml::Error> for PdfModuleError {
+    fn from(err: serde_yaml::Error) -> Self {
+        Self::StorageError(format!("YAML error: {}", err))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

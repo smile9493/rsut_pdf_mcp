@@ -4,9 +4,13 @@
 //! enabling the PDF MCP server to request LLM assistance for complex
 //! document analysis tasks.
 
+pub mod client;
 pub mod manager;
 
-#[allow(unused_imports)]
+pub use client::{
+    OutgoingRequest, SamplingClient, SamplingClientConfig,
+    create_sampling_jsonrpc_request, parse_sampling_response,
+};
 pub use manager::{SamplingError, SamplingManager};
 
 use serde::{Deserialize, Serialize};

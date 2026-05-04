@@ -103,11 +103,13 @@ impl VlmEnhancedPipeline {
         Self::new(server_config, None)
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn extract_text(&self, file_path: &Path) -> PdfResult<TextExtractionResult> {
         self.validator.validate(file_path)?;
         self.engine.extract_text(file_path).await
     }
 
+    #[tracing::instrument(skip(self, options))]
     pub async fn extract_structured(
         &self,
         file_path: &Path,
@@ -194,6 +196,7 @@ impl VlmEnhancedPipeline {
         })
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn get_page_count(&self, file_path: &Path) -> PdfResult<u32> {
         self.validator.validate(file_path)?;
         self.engine.get_page_count(file_path).await
@@ -211,6 +214,7 @@ impl VlmEnhancedPipeline {
     ///
     /// Data flow:
     ///   Pdfium render → raw RGBA Vec<u8> → perceive_layout (internal Base64) → VLM API
+    #[tracing::instrument(skip(self))]
     pub async fn perceive_page(
         &self,
         file_path: &Path,

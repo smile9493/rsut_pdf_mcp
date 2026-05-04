@@ -28,6 +28,9 @@ pub struct WasmSlice {
 // SAFETY: WasmSlice is designed for controlled JS-WASM interop.
 // The caller must ensure thread safety and lifetime validity.
 unsafe impl Send for WasmSlice {}
+
+// SAFETY: WasmSlice is designed for controlled JS-WASM interop.
+// The caller must ensure thread safety and lifetime validity.
 unsafe impl Sync for WasmSlice {}
 
 impl WasmSlice {
@@ -52,7 +55,8 @@ impl WasmSlice {
     ///
     /// Caller must ensure the pointer and length are valid.
     pub unsafe fn as_slice(&self) -> &[u8] {
-        std::slice::from_raw_parts(self.ptr, self.len)
+        // SAFETY: Caller guarantees ptr is valid for len bytes
+        unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
     }
 
     /// Get the raw pointer for JS interop.

@@ -32,6 +32,16 @@
 //! - `VLM_RETRY_DELAY_BASE_SECS`: Base retry delay (default: 1)
 //! - `VLM_RETRY_DELAY_MAX_SECS`: Max retry delay (default: 30)
 
+#![forbid(unsafe_op_in_unsafe_fn)]
+#![warn(clippy::all)]
+#![warn(clippy::await_holding_lock)]
+#![warn(clippy::await_holding_refcell_ref)]
+#![warn(clippy::large_stack_frames)]
+#![warn(clippy::undocumented_unsafe_blocks)]
+#![warn(clippy::todo)]
+#![warn(clippy::dbg_macro)]
+#![cfg_attr(not(test), warn(clippy::unwrap_used))]
+
 use pdf_core::{McpPdfPipeline, ServerConfig};
 use std::sync::Arc;
 use tracing::info;
