@@ -1,13 +1,13 @@
+use crate::protocol::{Content, JsonRpcError, JsonRpcRequest, JsonRpcResponse, ToolDefinition};
 use crate::sampling::{
-    create_sampling_jsonrpc_request, parse_sampling_response, OutgoingRequest,
-    SamplingClient, SamplingClientConfig,
+    create_sampling_jsonrpc_request, parse_sampling_response, OutgoingRequest, SamplingClient,
+    SamplingClientConfig,
 };
 use pdf_core::{
     dto::*,
     wiki::{AgentPayload, WikiStorage},
     FulltextIndex, GraphIndex, KnowledgeEngine, McpPdfPipeline, PathValidationConfig,
 };
-use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -153,6 +153,7 @@ fn default_path_config() -> PathValidationConfig {
     }
 }
 
+#[tracing::instrument(skip(pipeline))]
 pub async fn run_stdio(pipeline: Arc<McpPdfPipeline>) -> anyhow::Result<()> {
     info!("MCP server listening on stdio");
 
@@ -183,7 +184,7 @@ pub async fn run_stdio(pipeline: Arc<McpPdfPipeline>) -> anyhow::Result<()> {
     let mut stdout_lock = stdout.lock();
 
     let (stdin_tx, mut stdin_rx) = mpsc::channel::<String>(100);
-    
+
     tokio::task::spawn_blocking(move || {
         let stdin = std::io::stdin();
         for line in stdin.lock().lines() {
@@ -290,6 +291,7 @@ fn write_response(
     Ok(())
 }
 
+#[tracing::instrument(skip(pipeline, request), fields(method = %request.method))]
 pub async fn handle_request(
     pipeline: &Arc<McpPdfPipeline>,
     request: JsonRpcRequest,
@@ -668,19 +670,12 @@ fn handle_tools_list(request: &JsonRpcRequest) -> JsonRpcResponse {
     JsonRpcResponse::success(request.id.clone(), serde_json::json!({ "tools": tools }))
 }
 
+#[tracing::instrument(skip(pipeline, request), fields(tool = ?request.params.get("name")))]
 async fn handle_tools_call(
     pipeline: &Arc<McpPdfPipeline>,
     request: &JsonRpcRequest,
 ) -> JsonRpcResponse {
-    let params = match &request.params {
-        Some(p) => p,
-        None => {
-            return JsonRpcResponse::error(
-                request.id.clone(),
-                JsonRpcError::invalid_params("Missing params"),
-            )
-        }
-    };
+    let params = &request.params;
 
     let tool_name = match params.get("name").and_then(|n| n.as_str()) {
         Some(name) => name,
@@ -715,9 +710,9 @@ async fn handle_tools_call(
         "export_concept_map" => handle_export_concept_map(&arguments).await,
         "check_quality" => handle_check_quality(&arguments).await,
         "micro_compile" => handle_micro_compile(pipeline, &arguments).await,
-        "aggregate_entries" => handle_aggregate_entries(&arguments).await,
-        "hypothesis_test" => handle_hypothesis_test(&arguments).await,
-        "recompile_entry" => handle_recompile_entry(&arguments).await,
+        "aggregate_entries" => handle_aggregate_entries(pipeline, &arguments).await,
+        "hypothesis_test" => handle_hypothesis_test(pipeline, &arguments).await,
+        "recompile_entry" => handle_recompile_entry(pipeline, &arguments).await,
         _ => {
             return JsonRpcResponse::error(
                 request.id.clone(),
@@ -738,6 +733,7 @@ async fn handle_tools_call(
     }
 }
 
+#[tracing::instrument(skip(pipeline, args))]
 async fn handle_extract_text(
     pipeline: &Arc<McpPdfPipeline>,
     args: &serde_json::Value,
@@ -888,102 +884,6 @@ async fn handle_search_keywords(
     Ok(vec![Content::text(serde_json::to_string(&search_result)?)])
 }
 
-#[derive(Debug, Deserialize)]
-pub struct JsonRpcRequest {
-    #[allow(dead_code)]
-    jsonrpc: String,
-    pub id: Option<serde_json::Value>,
-    pub method: String,
-    pub params: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct JsonRpcResponse {
-    jsonrpc: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub result: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<JsonRpcError>,
-}
-
-impl JsonRpcResponse {
-    fn success(id: Option<serde_json::Value>, result: serde_json::Value) -> Self {
-        Self {
-            jsonrpc: "2.0".to_string(),
-            id,
-            result: Some(result),
-            error: None,
-        }
-    }
-
-    fn error(id: Option<serde_json::Value>, error: JsonRpcError) -> Self {
-        Self {
-            jsonrpc: "2.0".to_string(),
-            id,
-            result: None,
-            error: Some(error),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct JsonRpcError {
-    pub code: i32,
-    pub message: String,
-}
-
-impl JsonRpcError {
-    fn parse_error() -> Self {
-        Self {
-            code: -32700,
-            message: "Parse error".to_string(),
-        }
-    }
-    fn method_not_found(method: &str) -> Self {
-        Self {
-            code: -32601,
-            message: format!("Method not found: {}", method),
-        }
-    }
-    fn invalid_params(msg: &str) -> Self {
-        Self {
-            code: -32602,
-            message: msg.to_string(),
-        }
-    }
-    fn internal_error(msg: &str) -> Self {
-        Self {
-            code: -32603,
-            message: msg.to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-struct ToolDefinition {
-    name: String,
-    description: String,
-    input_schema: serde_json::Value,
-}
-
-#[derive(Debug, Serialize)]
-struct Content {
-    #[serde(rename = "type")]
-    content_type: String,
-    text: String,
-}
-
-impl Content {
-    fn text(text: String) -> Self {
-        Self {
-            content_type: "text".to_string(),
-            text,
-        }
-    }
-}
-
 async fn handle_extrude_to_server_wiki(
     pipeline: &Arc<McpPdfPipeline>,
     args: &serde_json::Value,
@@ -1060,6 +960,7 @@ fn parse_kb_path(args: &serde_json::Value) -> anyhow::Result<std::path::PathBuf>
     Ok(std::path::PathBuf::from(kb))
 }
 
+#[tracing::instrument(skip(pipeline, args))]
 async fn handle_compile_to_wiki(
     pipeline: &Arc<McpPdfPipeline>,
     args: &serde_json::Value,
@@ -1092,9 +993,7 @@ async fn handle_incremental_compile(
     Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
 }
 
-async fn handle_search_knowledge(
-    args: &serde_json::Value,
-) -> anyhow::Result<Vec<Content>> {
+async fn handle_search_knowledge(args: &serde_json::Value) -> anyhow::Result<Vec<Content>> {
     let kb_path = parse_kb_path(args)?;
     let query = args["query"]
         .as_str()
@@ -1120,9 +1019,7 @@ async fn handle_search_knowledge(
     Ok(vec![Content::text(serde_json::to_string_pretty(&hits)?)])
 }
 
-async fn handle_rebuild_index(
-    args: &serde_json::Value,
-) -> anyhow::Result<Vec<Content>> {
+async fn handle_rebuild_index(args: &serde_json::Value) -> anyhow::Result<Vec<Content>> {
     let kb_path = parse_kb_path(args)?;
     let wiki_dir = kb_path.join("wiki");
 
@@ -1144,9 +1041,7 @@ async fn handle_rebuild_index(
     Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
 }
 
-async fn handle_get_entry_context(
-    args: &serde_json::Value,
-) -> anyhow::Result<Vec<Content>> {
+async fn handle_get_entry_context(args: &serde_json::Value) -> anyhow::Result<Vec<Content>> {
     let kb_path = parse_kb_path(args)?;
     let entry_path = args["entry_path"]
         .as_str()
@@ -1168,9 +1063,7 @@ async fn handle_get_entry_context(
     Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
 }
 
-async fn handle_find_orphans(
-    args: &serde_json::Value,
-) -> anyhow::Result<Vec<Content>> {
+async fn handle_find_orphans(args: &serde_json::Value) -> anyhow::Result<Vec<Content>> {
     let kb_path = parse_kb_path(args)?;
 
     let mut graph = GraphIndex::new();
@@ -1191,9 +1084,7 @@ async fn handle_find_orphans(
     Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
 }
 
-async fn handle_suggest_links(
-    args: &serde_json::Value,
-) -> anyhow::Result<Vec<Content>> {
+async fn handle_suggest_links(args: &serde_json::Value) -> anyhow::Result<Vec<Content>> {
     let kb_path = parse_kb_path(args)?;
     let entry_path = args["entry_path"]
         .as_str()
@@ -1214,9 +1105,7 @@ async fn handle_suggest_links(
     Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
 }
 
-async fn handle_export_concept_map(
-    args: &serde_json::Value,
-) -> anyhow::Result<Vec<Content>> {
+async fn handle_export_concept_map(args: &serde_json::Value) -> anyhow::Result<Vec<Content>> {
     let kb_path = parse_kb_path(args)?;
     let entry_path = args["entry_path"]
         .as_str()
@@ -1238,9 +1127,7 @@ async fn handle_export_concept_map(
     Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
 }
 
-async fn handle_check_quality(
-    args: &serde_json::Value,
-) -> anyhow::Result<Vec<Content>> {
+async fn handle_check_quality(args: &serde_json::Value) -> anyhow::Result<Vec<Content>> {
     let kb_path = parse_kb_path(args)?;
     let wiki_dir = kb_path.join("wiki");
 
@@ -1348,17 +1235,12 @@ fn parse_page_range(range: &str, max_page: u32) -> Vec<u32> {
 }
 
 async fn handle_aggregate_entries(
+    pipeline: &Arc<McpPdfPipeline>,
     args: &serde_json::Value,
 ) -> anyhow::Result<Vec<Content>> {
     let kb_path = parse_kb_path(args)?;
 
-    let pipeline = {
-        let config = pdf_core::ServerConfig::default();
-        let p = pdf_core::McpPdfPipeline::new(&config)
-            .map_err(|e| anyhow::anyhow!("Failed to create pipeline: {}", e))?;
-        std::sync::Arc::new(p)
-    };
-    let engine = pdf_core::KnowledgeEngine::new(pipeline, &kb_path)?;
+    let engine = pdf_core::KnowledgeEngine::new(Arc::clone(pipeline), &kb_path)?;
 
     let candidates = engine.identify_aggregation_candidates()?;
 
@@ -1375,17 +1257,12 @@ async fn handle_aggregate_entries(
 }
 
 async fn handle_hypothesis_test(
+    pipeline: &Arc<McpPdfPipeline>,
     args: &serde_json::Value,
 ) -> anyhow::Result<Vec<Content>> {
     let kb_path = parse_kb_path(args)?;
 
-    let pipeline = {
-        let config = pdf_core::ServerConfig::default();
-        let p = pdf_core::McpPdfPipeline::new(&config)
-            .map_err(|e| anyhow::anyhow!("Failed to create pipeline: {}", e))?;
-        std::sync::Arc::new(p)
-    };
-    let engine = pdf_core::KnowledgeEngine::new(pipeline, &kb_path)?;
+    let engine = pdf_core::KnowledgeEngine::new(Arc::clone(pipeline), &kb_path)?;
 
     let contradictions = engine.find_contradictions()?;
 
@@ -1416,6 +1293,7 @@ async fn handle_hypothesis_test(
 }
 
 async fn handle_recompile_entry(
+    pipeline: &Arc<McpPdfPipeline>,
     args: &serde_json::Value,
 ) -> anyhow::Result<Vec<Content>> {
     let kb_path = parse_kb_path(args)?;
@@ -1423,13 +1301,7 @@ async fn handle_recompile_entry(
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("Missing entry_path"))?;
 
-    let pipeline = {
-        let config = pdf_core::ServerConfig::default();
-        let p = pdf_core::McpPdfPipeline::new(&config)
-            .map_err(|e| anyhow::anyhow!("Failed to create pipeline: {}", e))?;
-        std::sync::Arc::new(p)
-    };
-    let engine = pdf_core::KnowledgeEngine::new(pipeline, &kb_path)?;
+    let engine = pdf_core::KnowledgeEngine::new(Arc::clone(pipeline), &kb_path)?;
 
     let result = engine.recompile_entry(std::path::Path::new(entry_path))?;
 

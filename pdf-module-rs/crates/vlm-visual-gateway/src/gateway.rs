@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use once_cell::sync::Lazy;
 use regex::Regex;
 use reqwest::Client;
+use std::sync::LazyLock;
 use tokio::sync::{broadcast, Semaphore};
 use tokio::time::timeout;
 use tracing::{info, warn};
@@ -16,12 +16,12 @@ use crate::types::{
     VlmConfig, VlmPayload,
 };
 
-static COORD_REGEX: Lazy<Regex> = Lazy::new(|| {
+static COORD_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\[\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\]")
         .expect("Invalid coordinate regex pattern")
 });
 
-static REGION_TYPE_REGEX: Lazy<Regex> = Lazy::new(|| {
+static REGION_TYPE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(title|body|table|image|caption|paragraph|heading)")
         .expect("Invalid region type regex pattern")
 });
@@ -84,6 +84,7 @@ impl VlmGateway {
     /// `image_data` — raw RGBA pixel bytes (will be Base64-encoded internally).
     /// `hint_text`  — optional Pdfium-extracted text fragments.
     /// `metadata`   — page dimensions and page number.
+    #[tracing::instrument(skip(self, image_data), fields(page = metadata.page_number))]
     pub async fn perceive_layout(
         &self,
         image_data: &[u8],
@@ -182,6 +183,7 @@ impl VlmGateway {
 
     // ─── Private helpers ──────────────────────────────
 
+    #[tracing::instrument(skip(self, payload), fields(trace_id = %trace_id))]
     async fn dispatch_request(
         &self,
         payload: &VlmPayload,
@@ -296,6 +298,7 @@ impl VlmGateway {
         Duration::from_millis(delay + jitter)
     }
 
+    #[tracing::instrument(skip(self, payload))]
     async fn send_request(&self, payload: &VlmPayload) -> VlmResult<String> {
         let is_ocr = self.config.model.uses_layout_parsing_endpoint();
 
