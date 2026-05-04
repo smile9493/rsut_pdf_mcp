@@ -1,15 +1,15 @@
 //! Batch processor for parallel PDF extraction.
 //!
-//! Uses async streams with `futures::stream::buffer_unordered` for concurrent
-//! file processing, bridging sync pdfium calls safely.
+//! Uses `tokio::task::JoinSet` for concurrent file processing,
+//! providing better task lifecycle management and cancellation support.
 
 use crate::dto::{ExtractOptions, StructuredExtractionResult};
 use crate::error::{PdfModuleError, PdfResult};
 use crate::extractor::McpPdfPipeline;
-use futures::stream::{self, StreamExt};
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
+use tokio::task::JoinSet;
 
 /// Errors that can occur during batch processing.
 #[derive(Debug, Error)]
@@ -17,6 +17,9 @@ use thiserror::Error;
 pub enum BatchError {
     #[error("Extraction failed: {0}")]
     Extraction(#[from] PdfModuleError),
+
+    #[error("Task join failed: {0}")]
+    JoinError(#[from] tokio::task::JoinError),
 }
 
 /// Configuration for batch PDF processing.
@@ -73,7 +76,7 @@ impl BatchProcessor {
 
     /// Process multiple PDF files in parallel using async approach.
     ///
-    /// Uses `buffer_unordered` to process files concurrently up to the
+    /// Uses `JoinSet` to process files concurrently up to the
     /// configured parallelism limit.
     #[tracing::instrument(skip(self, files, options))]
     pub async fn process_batch_async(
@@ -82,19 +85,30 @@ impl BatchProcessor {
         options: ExtractOptions,
     ) -> Result<Vec<(PathBuf, PdfResult<StructuredExtractionResult>)>, BatchError> {
         let pipeline = Arc::clone(&self.pipeline);
+        let max_parallel = self.config.max_files_parallel;
 
-        let results = stream::iter(files)
-            .map(|file_path| {
-                let pipeline = Arc::clone(&pipeline);
-                let options = options.clone();
-                async move {
-                    let result = pipeline.extract_structured(&file_path, &options).await;
-                    (file_path, result)
+        let mut set = JoinSet::new();
+        let mut results = Vec::with_capacity(files.len());
+
+        for file_path in files {
+            let pipeline = Arc::clone(&pipeline);
+            let options = options.clone();
+
+            set.spawn(async move {
+                let result = pipeline.extract_structured(&file_path, &options).await;
+                (file_path, result)
+            });
+
+            if set.len() >= max_parallel {
+                if let Some(res) = set.join_next().await {
+                    results.push(res?);
                 }
-            })
-            .buffer_unordered(self.config.max_files_parallel)
-            .collect::<Vec<_>>()
-            .await;
+            }
+        }
+
+        while let Some(res) = set.join_next().await {
+            results.push(res?);
+        }
 
         Ok(results)
     }
@@ -118,30 +132,39 @@ impl BatchProcessor {
     {
         let pipeline = Arc::clone(&self.pipeline);
         let total = files.len();
-        let processed = std::sync::atomic::AtomicUsize::new(0);
+        let max_parallel = self.config.max_files_parallel;
+        let processed = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
-        let results = stream::iter(files)
-            .map(|file_path| {
-                let pipeline = Arc::clone(&pipeline);
-                let options = options.clone();
-                let processed = &processed;
-                async move {
-                    let result = pipeline.extract_structured(&file_path, &options).await;
-                    let count = processed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    (file_path, result, count + 1)
+        let mut set = JoinSet::new();
+        let mut results = Vec::with_capacity(files.len());
+
+        for file_path in files {
+            let pipeline = Arc::clone(&pipeline);
+            let options = options.clone();
+            let processed = Arc::clone(&processed);
+
+            set.spawn(async move {
+                let result = pipeline.extract_structured(&file_path, &options).await;
+                let count = processed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                (file_path, result, count + 1)
+            });
+
+            if set.len() >= max_parallel {
+                if let Some(res) = set.join_next().await {
+                    let (file_path, result, count) = res?;
+                    progress_callback(count, total);
+                    results.push((file_path, result));
                 }
-            })
-            .buffer_unordered(self.config.max_files_parallel)
-            .collect::<Vec<_>>()
-            .await;
-
-        let mut final_results = Vec::new();
-        for (file_path, result, count) in results {
-            progress_callback(count, total);
-            final_results.push((file_path, result));
+            }
         }
 
-        Ok(final_results)
+        while let Some(res) = set.join_next().await {
+            let (file_path, result, count) = res?;
+            progress_callback(count, total);
+            results.push((file_path, result));
+        }
+
+        Ok(results)
     }
 }
 

@@ -9,13 +9,12 @@ use pdf_core::{
 };
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Write};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::signal;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info};
-
-static SHUTDOWN_FLAG: AtomicBool = AtomicBool::new(false);
 
 #[allow(dead_code)]
 pub struct ToolStats {
@@ -157,13 +156,13 @@ fn default_path_config() -> PathValidationConfig {
 pub async fn run_stdio(pipeline: Arc<McpPdfPipeline>) -> anyhow::Result<()> {
     info!("MCP server listening on stdio");
 
-    let shutdown_notifier = Arc::new(AtomicBool::new(false));
-    let notifier_clone = Arc::clone(&shutdown_notifier);
+    let shutdown_token = CancellationToken::new();
+    let shutdown_token_clone = shutdown_token.clone();
 
     tokio::spawn(async move {
         match signal::ctrl_c().await {
             Ok(()) => {
-                notifier_clone.store(true, Ordering::SeqCst);
+                shutdown_token_clone.cancel();
                 info!("Received shutdown signal, finishing current request...");
             }
             Err(err) => {
@@ -204,7 +203,7 @@ pub async fn run_stdio(pipeline: Arc<McpPdfPipeline>) -> anyhow::Result<()> {
     loop {
         tokio::select! {
             Some(line) = stdin_rx.recv() => {
-                if SHUTDOWN_FLAG.load(Ordering::SeqCst) || shutdown_notifier.load(Ordering::SeqCst) {
+                if shutdown_token.is_cancelled() {
                     info!("Shutting down gracefully...");
                     break;
                 }
@@ -268,7 +267,7 @@ pub async fn run_stdio(pipeline: Arc<McpPdfPipeline>) -> anyhow::Result<()> {
             }
 
             _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
-                if SHUTDOWN_FLAG.load(Ordering::SeqCst) || shutdown_notifier.load(Ordering::SeqCst) {
+                if shutdown_token.is_cancelled() {
                     break;
                 }
             }
@@ -276,7 +275,6 @@ pub async fn run_stdio(pipeline: Arc<McpPdfPipeline>) -> anyhow::Result<()> {
     }
 
     drop(stdin_rx);
-    SHUTDOWN_FLAG.store(true, Ordering::SeqCst);
     info!("Server shut down gracefully");
     Ok(())
 }
