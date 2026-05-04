@@ -1,5 +1,107 @@
 # Changelog
 
+## [0.4.0] - 2026-05-04
+
+### 重大变更：AI 原生知识编译引擎
+
+从"PDF 提取工具"升级为"**AI 原生知识编译与推理引擎**"，完整实现 Karpathy 编译器模式。
+
+### Added - 知识引擎核心
+
+- **KnowledgeEngine**: 知识编译调度核心
+  - `compile_to_wiki`: PDF → raw/ + AI 编译提示
+  - `incremental_compile`: Merkle 哈希增量编译
+  - `recompile_entry`: 单条目重编译 + 版本备份
+  - `aggregate_entries`: L1→L2 聚合候选发现
+  - `check_quality`: Wiki 质量扫描
+  - `micro_compile`: 即时 PDF 提取（不污染 wiki）
+  - `hypothesis_test`: 矛盾对发现 + 辩论框架
+
+- **KnowledgeEntry**: 标准化 YAML front matter
+  - 15 个元数据字段（title, domain, tags, level, status, quality_score 等）
+  - 支持 L0/L1/L2/L3 知识金字塔
+  - 支持 contradictions/related/aggregated_from 链接
+
+- **HashCache**: Merkle 风格增量变更检测
+  - SHA-256 文件哈希
+  - 自动跳过未变更 PDF
+
+### Added - 认知索引层
+
+- **FulltextIndex** (Tantivy 0.22): 全文检索
+  - CJK n-gram 分词器（中文字符 unigram + bigram）
+  - 索引 title/body/tags/domain
+  - 存储于 `.rsut_index/tantivy/`
+
+- **GraphIndex** (petgraph 0.7): 知识图谱
+  - `related`/`contradictions` 有向边
+  - 标签共现弱关系边（Jaccard ≥ 0.3）
+  - N 跳邻居发现
+  - 孤立条目检测
+  - 链接建议（Jaccard 相似度）
+  - Mermaid.js 概念图导出
+
+### Added - MCP 工具 (14 新增)
+
+| 工具 | 说明 |
+|------|------|
+| `compile_to_wiki` | PDF → 知识库编译入口 |
+| `incremental_compile` | 增量编译（哈希检测） |
+| `recompile_entry` | 单条目重编译 |
+| `aggregate_entries` | L1→L2 聚合候选 |
+| `check_quality` | Wiki 质量扫描 |
+| `micro_compile` | 即时提取（不持久化） |
+| `hypothesis_test` | 矛盾推理 |
+| `search_knowledge` | Tantivy 全文搜索 |
+| `rebuild_index` | 重建所有索引 |
+| `get_entry_context` | N 跳邻居发现 |
+| `find_orphans` | 孤立条目检测 |
+| `suggest_links` | 链接建议 |
+| `export_concept_map` | Mermaid 概念图 |
+| `search_keywords` | PDF 内关键词搜索 |
+
+### Added - Sampling 协议
+
+- **MCP Sampling**: Server-initiated LLM 调用
+  - `SamplingClient`: 异步请求管理
+  - `SamplingManager`: 超时/重试控制
+  - 支持 text/image 消息类型
+
+### Dependencies
+
+- `tantivy` 0.22 - 全文检索
+- `petgraph` 0.7 - 图索引
+
+### 架构
+
+```
+┌──────────────────────────────────────────────────┐
+│            AI Client (Claude / Cursor)            │
+│            20 MCP tools via JSON-RPC              │
+└──────────────────────┬───────────────────────────┘
+                       │ stdio
+                       ▼
+┌──────────────────────────────────────────────────┐
+│                 pdf-mcp (server)                  │
+├──────────────────────────────────────────────────┤
+│  ┌─── PDF Extraction (6 tools) ─────────────────┐│
+│  └──────────────────────────────────────────────┘│
+│  ┌─── Knowledge Engine (7 tools) ───────────────┐│
+│  └──────────────────────────────────────────────┘│
+│  ┌─── Cognitive Index (6 tools) ────────────────┐│
+│  └──────────────────────────────────────────────┘│
+└──────────────────────┬───────────────────────────┘
+                       │
+        ┌──────────────┴──────────────┐
+        ▼                             ▼
+┌───────────────┐         ┌───────────────────┐
+│  PdfiumEngine │         │  VlmGateway       │
+│  (FFI levee)  │         │  (conditional)    │
+└───────────────┘         └───────────────────┘
+```
+
+---
+
 ## [0.3.0] - 2026-04-29
 
 ### 重大变更：奥卡姆剃刀重构

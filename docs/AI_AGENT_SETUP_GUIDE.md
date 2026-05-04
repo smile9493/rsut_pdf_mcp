@@ -1,25 +1,37 @@
-# PDF Module 客户端配置指南
+# PDF Module AI Agent 配置指南
 
 ## 概述
 
-本指南说明如何配置 AI Agent (Cursor/Claude Desktop) 连接 PDF Module MCP 服务。
+本指南说明如何配置 AI Agent (Cursor/Claude Desktop) 连接 PDF Module MCP 服务端。
 
 ## 架构
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                  AI Agent (Cursor/Claude Desktop)           │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ JSON-RPC over stdio
-                           ▼
+│                         (MCP 客户端)                         │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ JSON-RPC over stdio
+                       ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                     pdf-mcp (二进制客户端)                   │
-│  Windows: pdf-mcp.exe  │  Linux/macOS: pdf-mcp             │
+│                     pdf-mcp (MCP 服务端)                     │
+│  Windows: pdf-mcp.exe  │  Linux/macOS: pdf-mcp              │
 ├─────────────────────────────────────────────────────────────┤
-│  MCP Tools:                                                 │
-│  • extract_text        - 提取纯文本                         │
-│  • extract_structured  - 提取结构化数据 (per-page + bbox)   │
-│  • get_page_count      - 获取页数                           │
+│  MCP Tools (20):                                            │
+│  ┌─ PDF Extraction (6) ───────────────────────────────────┐│
+│  │ extract_text / extract_structured / get_page_count     ││
+│  │ search_keywords / extrude_to_server_wiki               ││
+│  │ extrude_to_agent_payload                               ││
+│  └─────────────────────────────────────────────────────────┘│
+│  ┌─ Knowledge Compilation (7) ─────────────────────────────┐│
+│  │ compile_to_wiki / incremental_compile / recompile_entry││
+│  │ aggregate_entries / check_quality / micro_compile      ││
+│  │ hypothesis_test                                        ││
+│  └─────────────────────────────────────────────────────────┘│
+│  ┌─ Cognitive Index (6) ───────────────────────────────────┐│
+│  │ search_knowledge / rebuild_index / get_entry_context   ││
+│  │ find_orphans / suggest_links / export_concept_map      ││
+│  └─────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────┘
 ```
 
