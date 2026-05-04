@@ -10,6 +10,47 @@ use std::sync::Arc;
 use tracing::{info, warn};
 use vlm_visual_gateway::{MetricsCollector, VlmConfig, VlmGateway};
 
+/// MCP PDF processing pipeline with optional VLM enhancement.
+///
+/// This is the main entry point for PDF extraction in the MCP server.
+/// It combines local Pdfium-based extraction with optional VLM (Vision Language Model)
+/// enhancement for complex layouts.
+///
+/// # Architecture
+///
+/// ```text
+/// ┌─────────────────┐
+/// │ McpPdfPipeline  │
+/// ├─────────────────┤
+/// │ - FileValidator │ → PDF validation and type detection
+/// │ - VlmGateway    │ → Optional VLM enhancement
+/// │ - MetricsCollector │ → Prometheus metrics
+/// └─────────────────┘
+///          │
+///          ▼
+/// ┌─────────────────┐
+/// │ PdfiumEngine    │
+/// ├─────────────────┤
+/// │ - mmap loading  │ → Zero-copy file access
+/// │ - text extract  │ → Page-by-page extraction
+/// │ - structured    │ → Bounding box extraction
+/// └─────────────────┘
+/// ```
+///
+/// # Example
+///
+/// ```no_run
+/// use pdf_core::{McpPdfPipeline, ServerConfig};
+/// use std::sync::Arc;
+///
+/// let config = ServerConfig::from_env()?;
+/// let pipeline = Arc::new(McpPdfPipeline::new(&config)?);
+///
+/// // Extract text
+/// let result = pipeline.extract_text(path).await?;
+/// println!("Text: {}", result.text);
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub struct McpPdfPipeline {
     validator: FileValidator,
     #[allow(dead_code)]
@@ -18,8 +59,13 @@ pub struct McpPdfPipeline {
     metrics: Arc<MetricsCollector>,
 }
 
+/// Context for a single PDF extraction operation.
+///
+/// Contains the quality report and memory-mapped loader for the PDF file.
 pub struct ExtractionContext {
+    /// Quality analysis report for the PDF.
     pub quality_report: QualityReport,
+    /// Memory-mapped loader for zero-copy access.
     pub loader: MmapPdfLoader,
 }
 

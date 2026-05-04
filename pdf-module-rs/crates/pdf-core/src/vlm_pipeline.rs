@@ -52,6 +52,43 @@ pub struct VlmEnhancedResult {
 }
 
 /// VLM-enhanced PDF extraction pipeline.
+///
+/// Combines local Pdfium extraction with Vision Language Model (VLM)
+/// enhancement for complex layouts that require visual understanding.
+///
+/// # Smart Model Selection
+///
+/// The pipeline automatically selects the appropriate VLM model based on
+/// page complexity:
+///
+/// - **Simple** (text > 500 chars) → GLM-4.6V-Flash (free)
+/// - **Moderate** (50-500 chars) → GLM-4.6V-FlashX (lightweight)
+/// - **Complex** (<50 chars, scanned) → GLM-4.6V (high performance)
+///
+/// # Features
+///
+/// - **Automatic escalation**: Detect when VLM is needed
+/// - **Multi-model routing**: Cost-optimal model selection
+/// - **Graceful degradation**: Falls back to local extraction on VLM failure
+/// - **Metrics collection**: Track VLM usage and performance
+///
+/// # Example
+///
+/// ```no_run
+/// use pdf_core::{VlmEnhancedPipeline, ServerConfig};
+/// use vlm_visual_gateway::VlmConfig;
+///
+/// let config = ServerConfig::from_env()?;
+/// let vlm_config = VlmConfig::from_env().ok();
+/// let pipeline = VlmEnhancedPipeline::new(&config, vlm_config)?;
+///
+/// // Extract with VLM enhancement
+/// let result = pipeline.extract_structured(path, &options).await?;
+/// if result.vlm_triggered {
+///     println!("VLM enhanced {} pages", result.layout_results.len());
+/// }
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub struct VlmEnhancedPipeline {
     engine: PdfiumEngine,
     validator: FileValidator,

@@ -55,6 +55,48 @@ pub struct IncrementalResult {
 }
 
 /// The knowledge engine — central coordinator for the compilation pipeline.
+///
+/// Orchestrates PDF extraction, wiki storage, hash caching, and quality analysis
+/// to build and maintain a knowledge base from PDF documents.
+///
+/// # Architecture
+///
+/// ```text
+/// ┌──────────────────────┐
+/// │  KnowledgeEngine     │
+/// ├──────────────────────┤
+/// │ - McpPdfPipeline     │ → PDF extraction
+/// │ - WikiStorage        │ → Wiki file management
+/// │ - HashCache          │ → Incremental compilation
+/// │ - FulltextIndex      │ → Tantivy search
+/// │ - GraphIndex         │ → Concept graph
+/// └──────────────────────┘
+/// ```
+///
+/// # Features
+///
+/// - **Incremental compilation**: Only recompile changed PDFs
+/// - **Full-text search**: Tantivy-based search with CJK support
+/// - **Concept graph**: Link suggestions and contradiction detection
+/// - **Quality analysis**: Automated quality scoring
+///
+/// # Example
+///
+/// ```no_run
+/// use pdf_core::{McpPdfPipeline, KnowledgeEngine};
+/// use std::sync::Arc;
+///
+/// let pipeline = Arc::new(McpPdfPipeline::new(&config)?);
+/// let engine = KnowledgeEngine::new(pipeline, "./kb")?;
+///
+/// // Compile a PDF to wiki
+/// let result = engine.compile_to_wiki(path, Some("IT")).await?;
+/// println!("Created {} entries", result.entries.len());
+///
+/// // Search the knowledge base
+/// let hits = engine.search_knowledge("machine learning", 10)?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub struct KnowledgeEngine {
     pipeline: Arc<McpPdfPipeline>,
     wiki: WikiStorage,

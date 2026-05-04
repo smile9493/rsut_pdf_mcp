@@ -62,8 +62,36 @@ impl Default for BatchConfig {
 
 /// Batch processor for parallel PDF extraction.
 ///
-/// Uses async streams with `buffer_unordered` for concurrent file processing,
-/// avoiding the deadlock risks of mixing Rayon and Tokio runtimes directly.
+/// Uses `tokio::task::JoinSet` for concurrent file processing,
+/// providing better task lifecycle management and cancellation support.
+///
+/// # Features
+///
+/// - **Parallel processing**: Process multiple PDF files concurrently
+/// - **Backpressure**: Limit concurrent tasks to prevent resource exhaustion
+/// - **Progress tracking**: Optional callback for progress reporting
+/// - **Error isolation**: Failed extractions don't affect other files
+///
+/// # Example
+///
+/// ```no_run
+/// use pdf_core::{McpPdfPipeline, parallel::{BatchProcessor, BatchConfig}};
+/// use std::sync::Arc;
+///
+/// let pipeline = Arc::new(McpPdfPipeline::new(&config)?);
+/// let processor = BatchProcessor::new(pipeline, BatchConfig::default());
+///
+/// let files = vec!["doc1.pdf".into(), "doc2.pdf".into()];
+/// let results = processor.process_batch_async(files, options).await?;
+///
+/// for (path, result) in results {
+///     match result {
+///         Ok(extraction) => println!("{}: {} pages", path.display(), extraction.pages.len()),
+///         Err(e) => eprintln!("{}: {}", path.display(), e),
+///     }
+/// }
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub struct BatchProcessor {
     pipeline: Arc<McpPdfPipeline>,
     config: BatchConfig,
