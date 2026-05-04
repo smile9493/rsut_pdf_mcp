@@ -19,6 +19,7 @@ use std::marker::PhantomData;
 /// the underlying memory is freed.
 ///
 /// Prefer [`OwnedSlice`] for safe ownership management.
+#[repr(C)]
 pub struct WasmSlice {
     ptr: *const u8,
     len: usize,

@@ -74,14 +74,17 @@ impl Default for BatchConfig {
 ///
 /// # Example
 ///
-/// ```no_run
-/// use pdf_core::{McpPdfPipeline, parallel::{BatchProcessor, BatchConfig}};
+/// ```ignore
+/// use pdf_core::{McpPdfPipeline, ServerConfig, parallel::{BatchProcessor, BatchConfig}};
+/// use pdf_core::dto::ExtractOptions;
 /// use std::sync::Arc;
 ///
+/// let config = ServerConfig::from_env()?;
 /// let pipeline = Arc::new(McpPdfPipeline::new(&config)?);
 /// let processor = BatchProcessor::new(pipeline, BatchConfig::default());
 ///
 /// let files = vec!["doc1.pdf".into(), "doc2.pdf".into()];
+/// let options = ExtractOptions::default();
 /// let results = processor.process_batch_async(files, options).await?;
 ///
 /// for (path, result) in results {

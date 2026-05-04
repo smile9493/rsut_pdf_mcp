@@ -82,19 +82,22 @@ pub struct IncrementalResult {
 ///
 /// # Example
 ///
-/// ```no_run
-/// use pdf_core::{McpPdfPipeline, KnowledgeEngine};
+/// ```ignore
+/// use pdf_core::{McpPdfPipeline, ServerConfig, KnowledgeEngine};
 /// use std::sync::Arc;
+/// use std::path::Path;
 ///
+/// let config = ServerConfig::from_env()?;
 /// let pipeline = Arc::new(McpPdfPipeline::new(&config)?);
 /// let engine = KnowledgeEngine::new(pipeline, "./kb")?;
 ///
 /// // Compile a PDF to wiki
+/// let path = Path::new("document.pdf");
 /// let result = engine.compile_to_wiki(path, Some("IT")).await?;
 /// println!("Created {} entries", result.entries.len());
 ///
 /// // Search the knowledge base
-/// let hits = engine.search_knowledge("machine learning", 10)?;
+/// let hits = engine.search("machine learning", 10)?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub struct KnowledgeEngine {

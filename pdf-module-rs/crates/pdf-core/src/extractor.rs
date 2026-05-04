@@ -39,14 +39,16 @@ use vlm_visual_gateway::{MetricsCollector, VlmConfig, VlmGateway};
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```ignore
 /// use pdf_core::{McpPdfPipeline, ServerConfig};
 /// use std::sync::Arc;
+/// use std::path::Path;
 ///
 /// let config = ServerConfig::from_env()?;
 /// let pipeline = Arc::new(McpPdfPipeline::new(&config)?);
 ///
 /// // Extract text
+/// let path = Path::new("document.pdf");
 /// let result = pipeline.extract_text(path).await?;
 /// println!("Text: {}", result.text);
 /// # Ok::<(), Box<dyn std::error::Error>>(())

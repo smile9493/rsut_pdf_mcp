@@ -74,15 +74,19 @@ pub struct VlmEnhancedResult {
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```ignore
 /// use pdf_core::{VlmEnhancedPipeline, ServerConfig};
+/// use pdf_core::dto::ExtractOptions;
 /// use vlm_visual_gateway::VlmConfig;
+/// use std::path::Path;
 ///
 /// let config = ServerConfig::from_env()?;
 /// let vlm_config = VlmConfig::from_env().ok();
 /// let pipeline = VlmEnhancedPipeline::new(&config, vlm_config)?;
 ///
 /// // Extract with VLM enhancement
+/// let path = Path::new("document.pdf");
+/// let options = ExtractOptions::default();
 /// let result = pipeline.extract_structured(path, &options).await?;
 /// if result.vlm_triggered {
 ///     println!("VLM enhanced {} pages", result.layout_results.len());
