@@ -49,6 +49,7 @@ use tracing::info;
 mod protocol;
 mod sampling;
 mod server;
+mod tools;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

@@ -27,8 +27,6 @@ pub enum ErrorCategory {
     Database,
     /// LLM errors (5xx)
     LLM,
-    /// Control plane errors (rate limiting, circuit breaker, timeout, etc.)
-    ControlPlane,
 }
 
 /// Unified error type for the entire PDF module workspace.
@@ -82,21 +80,8 @@ pub enum PdfError {
     #[error("Discovery failed: {0}")]
     Discovery(String),
 
-    // === Control Plane Errors ===
-    #[error("Rate limit exceeded: {0}")]
-    RateLimitExceeded(String),
-
-    #[error("Circuit breaker open: {0}")]
-    CircuitBreakerOpen(String),
-
     #[error("Timeout after {0}ms")]
     Timeout(u64),
-
-    #[error("Message send error: {0}")]
-    MessageSend(String),
-
-    #[error("Control plane error: {0}")]
-    ControlPlane(String),
 
     // === Validation Errors ===
     #[error("Validation failed: {0}")]
@@ -155,12 +140,12 @@ impl PdfError {
             Self::AdapterNotFound(_) => 400,
             Self::ToolNotFound(_) => 404,
             Self::ToolAlreadyRegistered(_) => 409,
-            Self::RateLimitExceeded(_) => 429,
             Self::Validation(_) => 400,
             Self::SchemaValidation(_) => 400,
             Self::InvalidToolDefinition(_) => 400,
             Self::ParameterMissing(_) => 400,
             Self::ParameterType(_) => 400,
+            Self::Timeout(_) => 408,
 
             // 5xx Server Errors
             Self::Extraction(_) => 500,
@@ -169,10 +154,6 @@ impl PdfError {
             Self::PluginLoad(_) => 500,
             Self::ToolUnavailable(_) => 503,
             Self::Discovery(_) => 500,
-            Self::CircuitBreakerOpen(_) => 503,
-            Self::Timeout(_) => 408,
-            Self::MessageSend(_) => 500,
-            Self::ControlPlane(_) => 500,
             Self::Config(_) => 500,
             Self::Storage(_) => 500,
             Self::Audit(_) => 500,
@@ -204,11 +185,7 @@ impl PdfError {
             | Self::ToolUnavailable(_)
             | Self::Discovery(_) => ErrorCategory::Plugin,
 
-            Self::RateLimitExceeded(_)
-            | Self::CircuitBreakerOpen(_)
-            | Self::Timeout(_)
-            | Self::MessageSend(_)
-            | Self::ControlPlane(_) => ErrorCategory::ControlPlane,
+            Self::Timeout(_) => ErrorCategory::Network,
 
             Self::Validation(_)
             | Self::SchemaValidation(_)
@@ -242,11 +219,7 @@ impl PdfError {
             Self::PluginLoad(_) => "PluginLoadError",
             Self::ToolUnavailable(_) => "ToolUnavailableError",
             Self::Discovery(_) => "DiscoveryError",
-            Self::RateLimitExceeded(_) => "RateLimitExceededError",
-            Self::CircuitBreakerOpen(_) => "CircuitBreakerOpenError",
             Self::Timeout(_) => "TimeoutError",
-            Self::MessageSend(_) => "MessageSendError",
-            Self::ControlPlane(_) => "ControlPlaneError",
             Self::Validation(_) => "ValidationError",
             Self::SchemaValidation(_) => "SchemaValidationError",
             Self::Config(_) => "ConfigError",
@@ -285,13 +258,6 @@ impl Serialize for PdfError {
 /// Convenience type alias.
 pub type Result<T> = std::result::Result<T, PdfError>;
 
-// === Backward-compatibility conversions ===
-
-/// Convert from the legacy pdf-core `PdfModuleError`.
-///
-/// This allows gradual migration: existing code can return
-/// `PdfModuleError` and it will be automatically converted
-/// when crossing crate boundaries that expect `PdfError`.
 impl From<PdfError> for std::io::Error {
     fn from(err: PdfError) -> Self {
         std::io::Error::other(err.to_string())
@@ -310,14 +276,9 @@ mod tests {
         assert_eq!(PdfError::CorruptedFile("x".into()).status_code(), 422);
         assert_eq!(PdfError::Extraction("x".into()).status_code(), 500);
         assert_eq!(PdfError::AdapterNotFound("x".into()).status_code(), 400);
-        assert_eq!(PdfError::CircuitBreakerOpen("x".into()).status_code(), 503);
         assert_eq!(PdfError::Timeout(5000).status_code(), 408);
-        assert_eq!(PdfError::RateLimitExceeded("x".into()).status_code(), 429);
         assert_eq!(PdfError::ToolNotFound("x".into()).status_code(), 404);
-        assert_eq!(
-            PdfError::ToolAlreadyRegistered("x".into()).status_code(),
-            409
-        );
+        assert_eq!(PdfError::ToolAlreadyRegistered("x".into()).status_code(), 409);
     }
 
     #[test]
@@ -339,6 +300,7 @@ mod tests {
             ErrorCategory::Database
         );
         assert_eq!(PdfError::LLM("x".into()).category(), ErrorCategory::LLM);
+        assert_eq!(PdfError::Timeout(1000).category(), ErrorCategory::Network);
     }
 
     #[test]

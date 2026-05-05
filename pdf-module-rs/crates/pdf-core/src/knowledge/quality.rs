@@ -385,12 +385,13 @@ fn detect_drift(
                 }
 
                 let pair_key = {
-                    let mut key = vec![
-                        entries[idx_a].0.to_string_lossy().to_string(),
-                        entries[idx_b].0.to_string_lossy().to_string(),
-                    ];
-                    key.sort();
-                    key.join("↔")
+                    let a = entries[idx_a].0.to_string_lossy().to_string();
+                    let b = entries[idx_b].0.to_string_lossy().to_string();
+                    if a <= b {
+                        format!("{}↔{}", a, b)
+                    } else {
+                        format!("{}↔{}", b, a)
+                    }
                 };
                 if !seen_pairs.insert(pair_key) {
                     continue;

@@ -29,7 +29,6 @@ pub enum PdfModuleError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
-    // === MCP Optimization Errors ===
     #[error("Tool registration failed: {0}")]
     ToolRegistration(String),
 
@@ -48,9 +47,6 @@ pub enum PdfModuleError {
     #[error("Config error: {0}")]
     Config(String),
 
-    #[error("Message send error: {0}")]
-    MessageSend(String),
-
     #[error("Tool not found: {0}")]
     ToolNotFound(String),
 
@@ -63,15 +59,8 @@ pub enum PdfModuleError {
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 
-    // === Plugin Architecture Errors ===
     #[error("Tool '{0}' is already registered")]
     ToolAlreadyRegistered(String),
-
-    #[error("Rate limit exceeded for tool '{0}'")]
-    RateLimitExceeded(String),
-
-    #[error("Circuit breaker is open for tool '{0}'")]
-    CircuitBreakerOpen(String),
 
     #[error("Schema validation failed: {0}")]
     SchemaValidation(String),
@@ -84,9 +73,6 @@ pub enum PdfModuleError {
 
     #[error("Discovery failed: {0}")]
     Discovery(String),
-
-    #[error("Control plane error: {0}")]
-    ControlPlane(String),
 
     #[error("HTTP error: {0}")]
     Http(String),
@@ -124,19 +110,15 @@ impl PdfModuleError {
             Self::Storage(_) => 500,
             Self::Audit(_) => 500,
             Self::Config(_) => 500,
-            Self::MessageSend(_) => 500,
             Self::ToolNotFound(_) => 404,
             Self::InvalidToolDefinition(_) => 400,
             Self::PluginLoad(_) => 500,
             Self::Json(_) => 500,
             Self::ToolAlreadyRegistered(_) => 409,
-            Self::RateLimitExceeded(_) => 429,
-            Self::CircuitBreakerOpen(_) => 503,
             Self::SchemaValidation(_) => 400,
             Self::Timeout(_) => 408,
             Self::ToolUnavailable(_) => 503,
             Self::Discovery(_) => 500,
-            Self::ControlPlane(_) => 500,
             Self::Http(_) => 500,
             Self::Database(_) => 500,
             Self::LLM(_) => 500,
@@ -162,19 +144,15 @@ impl PdfModuleError {
             Self::Storage(_) => "StorageError",
             Self::Audit(_) => "AuditError",
             Self::Config(_) => "ConfigError",
-            Self::MessageSend(_) => "MessageSendError",
             Self::ToolNotFound(_) => "ToolNotFoundError",
             Self::InvalidToolDefinition(_) => "InvalidToolDefinitionError",
             Self::PluginLoad(_) => "PluginLoadError",
             Self::Json(_) => "JsonError",
             Self::ToolAlreadyRegistered(_) => "ToolAlreadyRegisteredError",
-            Self::RateLimitExceeded(_) => "RateLimitExceededError",
-            Self::CircuitBreakerOpen(_) => "CircuitBreakerOpenError",
             Self::SchemaValidation(_) => "SchemaValidationError",
             Self::Timeout(_) => "TimeoutError",
             Self::ToolUnavailable(_) => "ToolUnavailableError",
             Self::Discovery(_) => "DiscoveryError",
-            Self::ControlPlane(_) => "ControlPlaneError",
             Self::Http(_) => "HttpError",
             Self::Database(_) => "DatabaseError",
             Self::LLM(_) => "LLMError",
@@ -218,19 +196,15 @@ impl PdfModuleError {
             Self::Storage(s) => pdf_common::PdfError::Storage(s),
             Self::Audit(s) => pdf_common::PdfError::Audit(s),
             Self::Config(s) => pdf_common::PdfError::Config(s),
-            Self::MessageSend(s) => pdf_common::PdfError::MessageSend(s),
             Self::ToolNotFound(s) => pdf_common::PdfError::ToolNotFound(s),
             Self::InvalidToolDefinition(s) => pdf_common::PdfError::InvalidToolDefinition(s),
             Self::PluginLoad(s) => pdf_common::PdfError::PluginLoad(s),
             Self::Json(e) => pdf_common::PdfError::Json(e),
             Self::ToolAlreadyRegistered(s) => pdf_common::PdfError::ToolAlreadyRegistered(s),
-            Self::RateLimitExceeded(s) => pdf_common::PdfError::RateLimitExceeded(s),
-            Self::CircuitBreakerOpen(s) => pdf_common::PdfError::CircuitBreakerOpen(s),
             Self::SchemaValidation(s) => pdf_common::PdfError::SchemaValidation(s),
             Self::Timeout(ms) => pdf_common::PdfError::Timeout(ms),
             Self::ToolUnavailable(s) => pdf_common::PdfError::ToolUnavailable(s),
             Self::Discovery(s) => pdf_common::PdfError::Discovery(s),
-            Self::ControlPlane(s) => pdf_common::PdfError::ControlPlane(s),
             Self::Http(s) => pdf_common::PdfError::Http(s),
             Self::Database(s) => pdf_common::PdfError::Database(s),
             Self::LLM(s) => pdf_common::PdfError::LLM(s),
@@ -261,11 +235,7 @@ impl From<pdf_common::PdfError> for PdfModuleError {
             pdf_common::PdfError::PluginLoad(s) => Self::PluginLoad(s),
             pdf_common::PdfError::ToolUnavailable(s) => Self::ToolUnavailable(s),
             pdf_common::PdfError::Discovery(s) => Self::Discovery(s),
-            pdf_common::PdfError::RateLimitExceeded(s) => Self::RateLimitExceeded(s),
-            pdf_common::PdfError::CircuitBreakerOpen(s) => Self::CircuitBreakerOpen(s),
             pdf_common::PdfError::Timeout(ms) => Self::Timeout(ms),
-            pdf_common::PdfError::MessageSend(s) => Self::MessageSend(s),
-            pdf_common::PdfError::ControlPlane(s) => Self::ControlPlane(s),
             pdf_common::PdfError::Validation(s) => Self::Validation(s),
             pdf_common::PdfError::SchemaValidation(s) => Self::SchemaValidation(s),
             pdf_common::PdfError::Config(s) => Self::Config(s),
@@ -357,10 +327,6 @@ mod tests {
             "ConfigError"
         );
         assert_eq!(
-            PdfModuleError::MessageSend("test".into()).error_type(),
-            "MessageSendError"
-        );
-        assert_eq!(
             PdfModuleError::PluginLoad("test".into()).error_type(),
             "PluginLoadError"
         );
@@ -376,10 +342,6 @@ mod tests {
         assert_eq!(
             PdfModuleError::Discovery("test".into()).error_type(),
             "DiscoveryError"
-        );
-        assert_eq!(
-            PdfModuleError::ControlPlane("test".into()).error_type(),
-            "ControlPlaneError"
         );
         assert_eq!(
             PdfModuleError::Http("test".into()).error_type(),

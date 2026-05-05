@@ -17,4 +17,4 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }

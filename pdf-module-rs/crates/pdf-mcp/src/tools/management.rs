@@ -1,0 +1,206 @@
+use crate::protocol::{Content, ToolDefinition};
+use crate::tools::{parse_kb_path, ToolContext};
+use pdf_core::management::{ConfigManager, HealthReporter};
+use pdf_core::KnowledgeEngine;
+use std::sync::Arc;
+
+pub fn management_tool_definitions() -> Vec<ToolDefinition> {
+    vec![
+        ToolDefinition {
+            name: "get_config".to_string(),
+            description: "Get current runtime configuration for a knowledge base. Returns all key-value pairs from the managed config file.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    }
+                },
+                "required": ["knowledge_base"]
+            }),
+        },
+        ToolDefinition {
+            name: "set_config".to_string(),
+            description: "Set a runtime configuration value for a knowledge base. Persists atomically via write-tmp + rename.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    },
+                    "key": {
+                        "type": "string",
+                        "description": "Configuration key (e.g. 'vlm_api_key', 'extract_mode')"
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "Configuration value"
+                    }
+                },
+                "required": ["knowledge_base", "key", "value"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_health_report".to_string(),
+            description: "Get a comprehensive health report for the knowledge base: entry count, orphan count, contradiction count, index size, graph topology, quality score, and last compile time.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    }
+                },
+                "required": ["knowledge_base"]
+            }),
+        },
+        ToolDefinition {
+            name: "trigger_incremental_compile".to_string(),
+            description: "Manually trigger an incremental compilation of the knowledge base. Scans raw/ for changed PDFs and recompiles only those that need it.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    }
+                },
+                "required": ["knowledge_base"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_compile_status".to_string(),
+            description: "Get the current compile status: whether a compile is running, last start/finish times, duration, outcome, and recent compile history.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    }
+                },
+                "required": ["knowledge_base"]
+            }),
+        },
+    ]
+}
+
+pub async fn handle_get_config(args: &serde_json::Value) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+    let mut cm = ConfigManager::new(&kb_path);
+    cm.load()
+        .map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?;
+
+    let data: std::collections::HashMap<String, String> = cm.all().clone();
+    let result = serde_json::json!({
+        "config": data,
+        "total_keys": data.len(),
+        "config_path": kb_path.join(".rsut_index").join("config.json").to_string_lossy(),
+    });
+    Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
+}
+
+pub async fn handle_set_config(args: &serde_json::Value) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+    let key = args["key"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing key"))?;
+    let value = args["value"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing value"))?;
+
+    let mut cm = ConfigManager::new(&kb_path);
+    cm.load()
+        .map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?;
+    cm.set(key, value)
+        .map_err(|e| anyhow::anyhow!("Failed to set config: {}", e))?;
+
+    let result = serde_json::json!({
+        "status": "success",
+        "key": key,
+        "value": value,
+        "message": format!("Configuration '{}' updated successfully.", key),
+    });
+    Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
+}
+
+pub async fn handle_get_health_report(args: &serde_json::Value) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+    let reporter = HealthReporter::new(&kb_path);
+    let report = reporter
+        .report()
+        .map_err(|e| anyhow::anyhow!("Failed to generate report: {}", e))?;
+
+    let result = serde_json::json!({
+        "total_entries": report.total_entries,
+        "orphan_count": report.orphan_count,
+        "contradiction_count": report.contradiction_count,
+        "broken_link_count": report.broken_link_count,
+        "index_size_mb": report.index_size_bytes / 1024 / 1024,
+        "graph_nodes": report.graph_node_count,
+        "graph_edges": report.graph_edge_count,
+        "avg_quality_score": format!("{:.1}%", report.avg_quality_score * 100.0),
+        "domains": report.domains,
+        "last_compile": report.last_compile.map(|t| t.to_rfc3339()),
+        "generated_at": report.generated_at.to_rfc3339(),
+        "report_text": report.to_string(),
+    });
+    Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
+}
+
+pub async fn handle_trigger_incremental_compile(
+    ctx: &ToolContext,
+    args: &serde_json::Value,
+) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+    let engine = KnowledgeEngine::new(Arc::clone(&ctx.pipeline), &kb_path)?;
+    let raw_dir = engine.raw_dir();
+    let result = engine.incremental_compile(&raw_dir).await?;
+
+    let status_path = kb_path.join(".rsut_index").join("compile_status.json");
+    if let Some(parent) = status_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let status = serde_json::json!({
+        "running": false,
+        "last_finished": chrono::Utc::now().to_rfc3339(),
+        "last_outcome": "success",
+        "last_duration_ms": 0,
+        "entries_compiled": result.compiled,
+        "entries_skipped": result.skipped,
+        "message": format!("Incremental compile: {} compiled, {} skipped", result.compiled, result.skipped),
+    });
+    let _ = std::fs::write(
+        &status_path,
+        serde_json::to_string_pretty(&status).unwrap_or_default(),
+    );
+
+    Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
+}
+
+pub async fn handle_get_compile_status(args: &serde_json::Value) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+    let status_path = kb_path.join(".rsut_index").join("compile_status.json");
+
+    if !status_path.exists() {
+        let result = serde_json::json!({
+            "running": false,
+            "last_started": null,
+            "last_finished": null,
+            "last_duration_ms": null,
+            "last_outcome": null,
+            "message": "No compile has been performed yet.",
+            "history": [],
+        });
+        return Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)]);
+    }
+
+    let content = std::fs::read_to_string(&status_path)
+        .map_err(|e| anyhow::anyhow!("Failed to read compile status: {}", e))?;
+    let status: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| anyhow::anyhow!("Failed to parse compile status: {}", e))?;
+
+    Ok(vec![Content::text(serde_json::to_string_pretty(&status)?)])
+}

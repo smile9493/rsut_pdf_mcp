@@ -364,6 +364,7 @@ async fn health(State(state): State<AppState>) -> Json<HealthCheck> {
 }
 
 #[tracing::instrument(skip(state, req), fields(command = %req.command))]
+#[allow(unused_assignments)]
 async fn mcp_proxy(
     State(state): State<AppState>,
     Json(req): Json<McpProxyRequest>,

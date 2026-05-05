@@ -11,7 +11,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use pdf_core::management::{ConfigManager, HealthReporter};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(name = "pdf-cli", version, about = "Manage rsut-pdf-mcp knowledge bases from the terminal")]
@@ -88,7 +88,7 @@ async fn main() -> Result<()> {
     }
 }
 
-fn cmd_health(kb_path: &PathBuf) -> Result<()> {
+fn cmd_health(kb_path: &Path) -> Result<()> {
     let reporter = HealthReporter::new(kb_path);
     let report = reporter
         .report()
@@ -97,7 +97,7 @@ fn cmd_health(kb_path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn cmd_config(kb_path: &PathBuf, action: ConfigAction) -> Result<()> {
+fn cmd_config(kb_path: &Path, action: ConfigAction) -> Result<()> {
     match action {
         ConfigAction::Show => {
             let mut cm = ConfigManager::new(kb_path);
@@ -108,7 +108,7 @@ fn cmd_config(kb_path: &PathBuf, action: ConfigAction) -> Result<()> {
                 return Ok(());
             }
             println!("Configuration ({} entries):", data.len());
-            println!("{:<30} {}", "KEY", "VALUE");
+            println!("{:<30} VALUE", "KEY");
             println!("{}", "─".repeat(60));
             let mut entries: Vec<_> = data.iter().collect();
             entries.sort_by_key(|(k, _)| k.as_str());
@@ -147,10 +147,9 @@ fn cmd_config(kb_path: &PathBuf, action: ConfigAction) -> Result<()> {
     }
 }
 
-async fn cmd_compile(kb_path: &PathBuf, incremental: bool) -> Result<()> {
+async fn cmd_compile(kb_path: &Path, incremental: bool) -> Result<()> {
     if incremental {
         println!("Running incremental compile...");
-        // For CLI, we need a pipeline. Load config and create one.
         let config = pdf_core::ServerConfig::from_env().unwrap_or_default();
         let pipeline = std::sync::Arc::new(
             pdf_core::McpPdfPipeline::new(&config).context("Failed to create pipeline")?,
@@ -174,7 +173,7 @@ async fn cmd_compile(kb_path: &PathBuf, incremental: bool) -> Result<()> {
     Ok(())
 }
 
-fn cmd_index(kb_path: &PathBuf, rebuild: bool) -> Result<()> {
+fn cmd_index(kb_path: &Path, rebuild: bool) -> Result<()> {
     if rebuild {
         let wiki_dir = kb_path.join("wiki");
         if !wiki_dir.exists() {
@@ -183,7 +182,6 @@ fn cmd_index(kb_path: &PathBuf, rebuild: bool) -> Result<()> {
         }
         println!("Rebuilding indexes...");
 
-        // Rebuild fulltext index
         let ft_idx = pdf_core::FulltextIndex::open_or_create(kb_path)
             .context("Failed to open fulltext index")?;
         let ft_count = ft_idx
@@ -191,7 +189,6 @@ fn cmd_index(kb_path: &PathBuf, rebuild: bool) -> Result<()> {
             .context("Failed to rebuild fulltext index")?;
         println!("Fulltext index: {} entries indexed", ft_count);
 
-        // Rebuild graph index
         let mut g_idx = pdf_core::GraphIndex::new();
         let g_count = g_idx
             .rebuild(&wiki_dir)

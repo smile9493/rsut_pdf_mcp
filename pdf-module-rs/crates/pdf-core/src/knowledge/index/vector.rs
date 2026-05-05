@@ -330,12 +330,7 @@ impl VectorIndex {
     /// Persist the vector index to disk.
     pub fn save(&self) -> PdfResult<()> {
         let snapshot = VectorSnapshot {
-            entries: self
-                .store
-                .entries
-                .iter()
-                .cloned()
-                .collect(),
+            entries: self.store.entries.to_vec(),
             dimension: self.model.dimension(),
         };
         let bytes = bincode::serialize(&snapshot).map_err(|e| {
