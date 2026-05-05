@@ -7,23 +7,18 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Classification level of a knowledge entry in the compilation pyramid.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum EntryLevel {
     /// Raw extraction — direct PDF-to-text, lives in `raw/`.
     L0,
     /// Atomic concept — single idea, lives in `wiki/<domain>/`.
+    #[default]
     L1,
     /// Aggregation — synthesis of multiple L1 entries on one sub-topic.
     L2,
     /// Domain map — top-level navigation for an entire field.
     L3,
-}
-
-impl Default for EntryLevel {
-    fn default() -> Self {
-        Self::L1
-    }
 }
 
 impl std::fmt::Display for EntryLevel {
@@ -38,10 +33,11 @@ impl std::fmt::Display for EntryLevel {
 }
 
 /// Compilation status tracking.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum CompileStatus {
     /// Newly extracted, awaiting AI compilation.
+    #[default]
     Pending,
     /// Currently being compiled by AI.
     Compiling,
@@ -51,12 +47,6 @@ pub enum CompileStatus {
     NeedsRecompile,
     /// Compilation failed.
     Failed,
-}
-
-impl Default for CompileStatus {
-    fn default() -> Self {
-        Self::Pending
-    }
 }
 
 /// Standardized YAML front matter for every knowledge entry.
@@ -179,7 +169,9 @@ impl KnowledgeEntry {
 
     /// Compute the expected filename: `[Domain] Title.md`
     pub fn filename(&self) -> String {
-        let safe_title = self.title.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+        let safe_title = self
+            .title
+            .replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
         format!("[{}] {}.md", self.domain, safe_title)
     }
 
@@ -191,9 +183,7 @@ impl KnowledgeEntry {
 
     /// Check if this entry has minimal quality (has title, domain, at least one tag).
     pub fn has_minimal_quality(&self) -> bool {
-        !self.title.is_empty()
-            && !self.domain.is_empty()
-            && !self.tags.is_empty()
+        !self.title.is_empty() && !self.domain.is_empty() && !self.tags.is_empty()
     }
 
     /// Bump the version and update the `updated` timestamp.
@@ -262,6 +252,9 @@ Body content here."#;
         let mut entry = KnowledgeEntry::new("HTTP/2 多路复用", "IT");
         assert_eq!(entry.filename(), "[IT] HTTP_2 多路复用.md");
         entry.domain = "Math".into();
-        assert_eq!(entry.relative_path(), PathBuf::from("math/[Math] HTTP_2 多路复用.md"));
+        assert_eq!(
+            entry.relative_path(),
+            PathBuf::from("math/[Math] HTTP_2 多路复用.md")
+        );
     }
 }

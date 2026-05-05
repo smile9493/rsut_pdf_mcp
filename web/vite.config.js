@@ -12,9 +12,12 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 3001,
+    strictPort: true,
+    allowedHosts: true,
+    hmr: false,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://host.docker.internal:38000',
         changeOrigin: true
       }
     }

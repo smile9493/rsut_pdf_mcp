@@ -357,9 +357,8 @@ impl ServerConfig {
 
     /// Load configuration from a file (TOML, JSON, or YAML)
     pub fn from_file(path: &str) -> Result<Self, PdfModuleError> {
-        let content = std::fs::read_to_string(path).map_err(|e| {
-            PdfModuleError::ConfigError(format!("Failed to read config file: {}", e))
-        })?;
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| PdfModuleError::Config(format!("Failed to read config file: {}", e)))?;
 
         let ext = std::path::Path::new(path)
             .extension()
@@ -368,13 +367,13 @@ impl ServerConfig {
 
         let config: Self = match ext.to_lowercase().as_str() {
             "toml" => toml::from_str(&content)
-                .map_err(|e| PdfModuleError::ConfigError(format!("Failed to parse TOML: {}", e)))?,
+                .map_err(|e| PdfModuleError::Config(format!("Failed to parse TOML: {}", e)))?,
             "json" => serde_json::from_str(&content)
-                .map_err(|e| PdfModuleError::ConfigError(format!("Failed to parse JSON: {}", e)))?,
+                .map_err(|e| PdfModuleError::Config(format!("Failed to parse JSON: {}", e)))?,
             "yaml" | "yml" => serde_yaml::from_str(&content)
-                .map_err(|e| PdfModuleError::ConfigError(format!("Failed to parse YAML: {}", e)))?,
+                .map_err(|e| PdfModuleError::Config(format!("Failed to parse YAML: {}", e)))?,
             _ => {
-                return Err(PdfModuleError::ConfigError(format!(
+                return Err(PdfModuleError::Config(format!(
                     "Unsupported config format: {}",
                     ext
                 )))
@@ -390,12 +389,12 @@ impl ServerConfig {
         // Validate storage configuration
         match self.storage.storage_type {
             StorageType::Local if self.storage.local.is_none() => {
-                return Err(PdfModuleError::ConfigError(
+                return Err(PdfModuleError::Config(
                     "Local storage config is required for local storage type".to_string(),
                 ));
             }
             StorageType::S3 if self.storage.s3.is_none() => {
-                return Err(PdfModuleError::ConfigError(
+                return Err(PdfModuleError::Config(
                     "S3 storage config is required for S3 storage type".to_string(),
                 ));
             }
@@ -404,7 +403,7 @@ impl ServerConfig {
 
         // Validate cache configuration
         if self.cache.enabled && self.cache.max_size == 0 {
-            return Err(PdfModuleError::ConfigError(
+            return Err(PdfModuleError::Config(
                 "Cache max size must be greater than 0 when cache is enabled".to_string(),
             ));
         }

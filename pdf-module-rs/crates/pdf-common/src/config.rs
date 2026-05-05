@@ -3,7 +3,24 @@
 //! Consolidates configuration types from pdf-core and pdf-etl.
 
 use crate::PdfError;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
+
+/// Serialize an optional secret string as `"REDACTED"` (or omit if None).
+fn redact_secret<S: Serializer>(value: &Option<String>, serializer: S) -> Result<S::Ok, S::Error> {
+    match value {
+        Some(_) => serializer.serialize_some("REDACTED"),
+        None => serializer.serialize_none(),
+    }
+}
+
+/// Serialize a secret string as `"REDACTED"`.
+fn redact_string<S: Serializer>(value: &str, serializer: S) -> Result<S::Ok, S::Error> {
+    if value.is_empty() {
+        serializer.serialize_some("")
+    } else {
+        serializer.serialize_some("REDACTED")
+    }
+}
 
 /// Application environment
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -65,11 +82,13 @@ pub enum AuditBackendConfig {
         log_dir: String,
     },
     Database {
+        #[serde(serialize_with = "redact_string")]
         connection_string: String,
         table_name: String,
     },
     Remote {
         endpoint: String,
+        #[serde(serialize_with = "redact_string")]
         api_key: String,
     },
     Memory,
@@ -207,9 +226,15 @@ pub struct S3StorageConfig {
     pub region: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prefix: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "redact_secret"
+    )]
     pub access_key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "redact_secret"
+    )]
     pub secret_key: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub endpoint: Option<String>,
@@ -325,7 +350,7 @@ impl AppConfig {
             _ => Environment::Development,
         };
 
-        Ok(Self {
+        let config = Self {
             server_name: std::env::var("SERVER_NAME").unwrap_or_else(|_| "pdf-module".to_string()),
             server_version: std::env::var("SERVER_VERSION").unwrap_or_else(|_| "0.3.0".to_string()),
             environment,
@@ -364,7 +389,9 @@ impl AppConfig {
                     .unwrap_or(100),
                 ..Default::default()
             },
-        })
+        };
+        config.validate()?;
+        Ok(config)
     }
 
     /// Load configuration from a TOML file
@@ -377,7 +404,7 @@ impl AppConfig {
             .and_then(|s| s.to_str())
             .unwrap_or("");
 
-        match ext.to_lowercase().as_str() {
+        let config: Self = match ext.to_lowercase().as_str() {
             "toml" => toml::from_str(&content)
                 .map_err(|e| PdfError::Config(format!("Failed to parse TOML: {}", e))),
             "json" => serde_json::from_str(&content)
@@ -386,7 +413,9 @@ impl AppConfig {
                 "Unsupported config format: {}",
                 ext
             ))),
-        }
+        }?;
+        config.validate()?;
+        Ok(config)
     }
 
     /// Validate all configuration sections

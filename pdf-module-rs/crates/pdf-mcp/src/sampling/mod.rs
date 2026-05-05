@@ -7,16 +7,18 @@
 pub mod client;
 pub mod manager;
 
+#[allow(unused_imports)]
 pub use client::{
-    OutgoingRequest, SamplingClient, SamplingClientConfig,
-    create_sampling_jsonrpc_request, parse_sampling_response,
+    create_sampling_jsonrpc_request, parse_sampling_response, OutgoingRequest, SamplingClient,
+    SamplingClientConfig,
 };
+#[allow(unused_imports)]
 pub use manager::{SamplingError, SamplingManager};
 
 use serde::{Deserialize, Serialize};
 
 /// A sampling request sent from the MCP server to the client.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SamplingRequest {
     pub messages: Vec<SamplingMessage>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -29,19 +31,6 @@ pub struct SamplingRequest {
     pub temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
-}
-
-impl Default for SamplingRequest {
-    fn default() -> Self {
-        Self {
-            messages: Vec::new(),
-            model_preferences: None,
-            system_prompt: None,
-            include_context: None,
-            temperature: None,
-            max_tokens: None,
-        }
-    }
 }
 
 /// A single message in a sampling request.

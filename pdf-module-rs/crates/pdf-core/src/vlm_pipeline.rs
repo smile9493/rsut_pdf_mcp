@@ -110,7 +110,7 @@ impl VlmEnhancedPipeline {
         let gateway = match vlm_config {
             Some(config) => Some(
                 VlmGateway::new(config, Arc::clone(&metrics))
-                    .map_err(|e| PdfModuleError::ConfigError(format!("VLM gateway: {e}")))?,
+                    .map_err(|e| PdfModuleError::Config(format!("VLM gateway: {e}")))?,
             ),
             None => None,
         };
@@ -182,13 +182,17 @@ impl VlmEnhancedPipeline {
             let model = if self
                 .gateway
                 .as_ref()
-                .unwrap()
+                .expect("gateway should be initialized")
                 .config()
                 .enable_multi_model_routing
             {
                 VlmModel::select_for_complexity(complexity)
             } else {
-                self.gateway.as_ref().unwrap().config().model
+                self.gateway
+                    .as_ref()
+                    .expect("gateway should be initialized")
+                    .config()
+                    .model
             };
 
             info!(
@@ -264,7 +268,7 @@ impl VlmEnhancedPipeline {
         let gateway = self
             .gateway
             .as_ref()
-            .ok_or_else(|| PdfModuleError::ConfigError("VLM gateway not configured".into()))?;
+            .ok_or_else(|| PdfModuleError::Config("VLM gateway not configured".into()))?;
 
         let data = std::fs::read(file_path)?;
 

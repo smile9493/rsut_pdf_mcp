@@ -14,6 +14,8 @@ use crate::error::{PdfModuleError, PdfResult};
 use crate::extractor::McpPdfPipeline;
 use crate::knowledge::entry::{CompileStatus, EntryLevel, KnowledgeEntry};
 use crate::knowledge::hash_cache::HashCache;
+use crate::knowledge::index::vector::VectorHit;
+use crate::knowledge::index::VectorIndex;
 use crate::knowledge::quality::{self, QualityReport};
 use crate::wiki::WikiStorage;
 
@@ -107,10 +109,7 @@ pub struct KnowledgeEngine {
 }
 
 impl KnowledgeEngine {
-    pub fn new(
-        pipeline: Arc<McpPdfPipeline>,
-        knowledge_base: impl AsRef<Path>,
-    ) -> PdfResult<Self> {
+    pub fn new(pipeline: Arc<McpPdfPipeline>, knowledge_base: impl AsRef<Path>) -> PdfResult<Self> {
         let kb = knowledge_base.as_ref().to_path_buf();
         let wiki = WikiStorage::new(&kb)?;
         Ok(Self {
@@ -187,7 +186,7 @@ impl KnowledgeEngine {
             .join("raw")
             .join(format!("{}.compile_prompt.md", source_name));
         fs::write(&prompt_path, &prompt).map_err(|e| {
-            PdfModuleError::StorageError(format!("Failed to write compile prompt: {}", e))
+            PdfModuleError::Storage(format!("Failed to write compile prompt: {}", e))
         })?;
 
         info!(
@@ -221,11 +220,10 @@ impl KnowledgeEngine {
         let mut pdf_files = Vec::new();
         if raw_dir.exists() {
             for entry in fs::read_dir(raw_dir)
-                .map_err(|e| PdfModuleError::StorageError(format!("Failed to read raw dir: {}", e)))?
+                .map_err(|e| PdfModuleError::Storage(format!("Failed to read raw dir: {}", e)))?
             {
-                let entry = entry.map_err(|e| {
-                    PdfModuleError::StorageError(format!("Failed to read entry: {}", e))
-                })?;
+                let entry = entry
+                    .map_err(|e| PdfModuleError::Storage(format!("Failed to read entry: {}", e)))?;
                 let path = entry.path();
                 if path.extension().map(|e| e == "pdf").unwrap_or(false) {
                     pdf_files.push(path);
@@ -372,10 +370,7 @@ related: ["wiki/other/concept.md"]
     /// Reads the entry, checks if its source PDF still exists, re-extracts if needed,
     /// bumps the version counter, and marks status as `NeedsRecompile` or `Compiled`.
     /// The AI client then uses the returned context to regenerate the entry content.
-    pub fn recompile_entry(
-        &self,
-        entry_path: &Path,
-    ) -> PdfResult<RecompileResult> {
+    pub fn recompile_entry(&self, entry_path: &Path) -> PdfResult<RecompileResult> {
         let wiki_dir = self.wiki_dir();
         let full_path = if entry_path.is_relative() {
             wiki_dir.join(entry_path)
@@ -389,12 +384,11 @@ related: ["wiki/other/concept.md"]
             ));
         }
 
-        let content = fs::read_to_string(&full_path).map_err(|e| {
-            PdfModuleError::StorageError(format!("Failed to read entry: {}", e))
-        })?;
+        let content = fs::read_to_string(&full_path)
+            .map_err(|e| PdfModuleError::Storage(format!("Failed to read entry: {}", e)))?;
 
         let mut entry = KnowledgeEntry::from_markdown(&content).ok_or_else(|| {
-            PdfModuleError::StorageError("Failed to parse front matter from entry".to_string())
+            PdfModuleError::Storage("Failed to parse front matter from entry".to_string())
         })?;
 
         // Check if source PDF still exists
@@ -420,13 +414,7 @@ related: ["wiki/other/concept.md"]
         }
 
         // Determine new status
-        let new_status = if source_exists && source_changed {
-            CompileStatus::NeedsRecompile
-        } else if source_exists {
-            CompileStatus::NeedsRecompile
-        } else {
-            CompileStatus::NeedsRecompile
-        };
+        let new_status = CompileStatus::NeedsRecompile;
 
         // Bump version
         entry.touch();
@@ -436,33 +424,31 @@ related: ["wiki/other/concept.md"]
         }
 
         // Write back updated front matter
-        let body = content
-            .split("---")
-            .nth(2)
-            .unwrap_or("")
-            .trim_start();
+        let body = content.split("---").nth(2).unwrap_or("").trim_start();
         let new_content = entry.to_markdown(body)?;
 
         // Back up old version
         let backup_dir = self.knowledge_base.join("wiki").join(".versions");
         fs::create_dir_all(&backup_dir).map_err(|e| {
-            PdfModuleError::StorageError(format!("Failed to create versions dir: {}", e))
+            PdfModuleError::Storage(format!("Failed to create versions dir: {}", e))
         })?;
         let backup_name = format!(
             "{}_v{}.md",
-            full_path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown"),
+            full_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown"),
             entry.version - 1
         );
         let backup_path = backup_dir.join(&backup_name);
         if full_path.exists() {
-            fs::copy(&full_path, &backup_path).map_err(|e| {
-                PdfModuleError::StorageError(format!("Failed to create backup: {}", e))
-            })?;
+            fs::copy(&full_path, &backup_path)
+                .map_err(|e| PdfModuleError::Storage(format!("Failed to create backup: {}", e)))?;
         }
 
         // Write updated entry
         fs::write(&full_path, &new_content).map_err(|e| {
-            PdfModuleError::StorageError(format!("Failed to write updated entry: {}", e))
+            PdfModuleError::Storage(format!("Failed to write updated entry: {}", e))
         })?;
 
         // Build recompile prompt for AI
@@ -515,9 +501,8 @@ related: ["wiki/other/concept.md"]
                     "3. **注意：源 PDF 已变更**，对比新旧内容，保留有价值的历史见解，融合新内容\n",
                 );
             } else {
-                instructions.push_str(
-                    "3. 按照最新编译规范重新提炼概念（可引用 `schema/` 中的规范）\n",
-                );
+                instructions
+                    .push_str("3. 按照最新编译规范重新提炼概念（可引用 `schema/` 中的规范）\n");
             }
         } else {
             instructions.push_str("2. 源 PDF 已不存在，仅根据当前正文内容重新格式化\n");
@@ -553,78 +538,70 @@ related: ["wiki/other/concept.md"]
 
     /// Identify clusters of L1 entries that can be aggregated into L2 summaries.
     ///
-    /// Uses a simple community detection approach:
-    /// 1. Group entries by domain
-    /// 2. Within each domain, find clusters connected by shared tags (Jaccard ≥ 0.3)
-    /// 3. Return clusters with ≥ 2 members as aggregation candidates
-    pub fn identify_aggregation_candidates(
-        &self,
-    ) -> PdfResult<Vec<AggregationCandidate>> {
-        use crate::knowledge::index::GraphIndex;
+    /// Uses Label Propagation community detection on the knowledge graph:
+    /// 1. Rebuild the full graph from wiki entries
+    /// 2. Run LPA to find communities
+    /// 3. For each multi-entry community, assign to the majority domain
+    /// 4. Return clusters with >= 2 members as aggregation candidates
+    pub fn identify_aggregation_candidates(&self) -> PdfResult<Vec<AggregationCandidate>> {
+        use crate::knowledge::index::{GraphIndex, detect_communities};
 
         let wiki_dir = self.wiki_dir();
         let mut graph = GraphIndex::new();
         graph.rebuild(&wiki_dir)?;
 
-        // Group entries by domain
-        let mut domain_entries: std::collections::HashMap<String, Vec<String>> =
+        // Filter to L1-only paths and build domain lookup
+        let mut l1_domains: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
         for path in graph.all_paths() {
-            // We need to read domain from the graph, but it's private.
-            // Instead, scan files directly.
             let full_path = wiki_dir.join(&path);
             if let Ok(content) = fs::read_to_string(&full_path) {
-                if let Some(entry) = crate::knowledge::entry::KnowledgeEntry::from_markdown(&content) {
+                if let Some(entry) =
+                    crate::knowledge::entry::KnowledgeEntry::from_markdown(&content)
+                {
                     if entry.level == crate::knowledge::entry::EntryLevel::L1 {
-                        domain_entries
-                            .entry(entry.domain.clone())
-                            .or_default()
-                            .push(path.clone());
+                        l1_domains.insert(path, entry.domain);
                     }
                 }
             }
         }
 
+        // Run Label Propagation on the full graph
+        let all_communities = detect_communities(graph.graph(), None);
+
         let mut candidates = Vec::new();
 
-        for (domain, paths) in &domain_entries {
-            if paths.len() < 2 {
+        for community in all_communities {
+            // Filter to L1 entries only
+            let l1_paths: Vec<String> = community
+                .members
+                .into_iter()
+                .filter(|p| l1_domains.contains_key(p))
+                .collect();
+
+            if l1_paths.len() < 2 {
                 continue;
             }
 
-            // Find connected components via tag co-occurrence
-            let mut visited = std::collections::HashSet::new();
-            for path in paths {
-                if visited.contains(path) {
-                    continue;
-                }
-                let neighbors = graph.get_neighbors(path, 1);
-                let cluster_paths: Vec<String> = neighbors
-                    .iter()
-                    .filter(|n| paths.contains(&n.path) && n.edge_kind == "tag_cooccurrence")
-                    .map(|n| n.path.clone())
-                    .collect();
-
-                if cluster_paths.len() >= 2 {
-                    let mut cluster = vec![path.clone()];
-                    cluster.extend(cluster_paths);
-                    cluster.sort();
-                    cluster.dedup();
-
-                    // Check if this cluster overlaps with already-visited
-                    let is_new = cluster.iter().any(|p| !visited.contains(p));
-                    if is_new {
-                        for p in &cluster {
-                            visited.insert(p.clone());
-                        }
-                        candidates.push(AggregationCandidate {
-                            domain: domain.clone(),
-                            entry_paths: cluster,
-                            suggested_title: format!("{} 领域综合", domain),
-                        });
-                    }
+            // Determine the majority domain in this community
+            let mut domain_counts: std::collections::HashMap<String, usize> =
+                std::collections::HashMap::new();
+            for path in &l1_paths {
+                if let Some(domain) = l1_domains.get(path) {
+                    *domain_counts.entry(domain.clone()).or_default() += 1;
                 }
             }
+            let domain = domain_counts
+                .into_iter()
+                .max_by_key(|(_, count)| *count)
+                .map(|(d, _)| d)
+                .unwrap_or_else(|| "未分类".to_string());
+
+            candidates.push(AggregationCandidate {
+                domain: domain.clone(),
+                entry_paths: l1_paths,
+                suggested_title: format!("{} 领域综合", domain),
+            });
         }
 
         Ok(candidates)
@@ -642,6 +619,7 @@ related: ["wiki/other/concept.md"]
         Ok(pairs)
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn scan_contradictions(
         &self,
         base: &Path,
@@ -653,17 +631,18 @@ related: ["wiki/other/concept.md"]
             return Ok(());
         }
         for entry in fs::read_dir(dir)
-            .map_err(|e| PdfModuleError::StorageError(format!("Failed to read dir: {}", e)))?
+            .map_err(|e| PdfModuleError::Storage(format!("Failed to read dir: {}", e)))?
         {
-            let entry = entry.map_err(|e| {
-                PdfModuleError::StorageError(format!("Failed to read entry: {}", e))
-            })?;
+            let entry = entry
+                .map_err(|e| PdfModuleError::Storage(format!("Failed to read entry: {}", e)))?;
             let path = entry.path();
             if path.is_dir() {
                 self.scan_contradictions(base, &path, pairs, seen)?;
             } else if path.extension().map(|e| e == "md").unwrap_or(false) {
                 if let Ok(content) = fs::read_to_string(&path) {
-                    if let Some(entry) = crate::knowledge::entry::KnowledgeEntry::from_markdown(&content) {
+                    if let Some(entry) =
+                        crate::knowledge::entry::KnowledgeEntry::from_markdown(&content)
+                    {
                         let rel = path
                             .strip_prefix(base)
                             .unwrap_or(&path)
@@ -671,7 +650,7 @@ related: ["wiki/other/concept.md"]
                             .to_string();
 
                         for contra in &entry.contradictions {
-                            let mut pair_key = vec![rel.clone(), contra.clone()];
+                            let mut pair_key = [rel.clone(), contra.clone()];
                             pair_key.sort();
                             let key = pair_key.join("↔");
                             if seen.insert(key) {
@@ -683,6 +662,171 @@ related: ["wiki/other/concept.md"]
                                 });
                             }
                         }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Embed a single wiki entry and add it to the vector index.
+    ///
+    /// Reads the entry file, extracts title + body, computes TF-IDF embedding,
+    /// and upserts the vector into the index.
+    pub fn embed_entry(&self, entry_path: &Path) -> PdfResult<VectorHit> {
+        let wiki_dir = self.wiki_dir();
+        let full_path = if entry_path.is_relative() {
+            wiki_dir.join(entry_path)
+        } else {
+            entry_path.to_path_buf()
+        };
+
+        if !full_path.exists() {
+            return Err(PdfModuleError::FileNotFound(
+                full_path.to_string_lossy().to_string(),
+            ));
+        }
+
+        let content = fs::read_to_string(&full_path)
+            .map_err(|e| PdfModuleError::Storage(format!("Failed to read entry: {}", e)))?;
+
+        let entry = KnowledgeEntry::from_markdown(&content).ok_or_else(|| {
+            PdfModuleError::Storage("Failed to parse front matter from entry".to_string())
+        })?;
+
+        let body = content.split("---").nth(2).unwrap_or("").to_string();
+        let rel_path = full_path
+            .strip_prefix(&wiki_dir)
+            .unwrap_or(&full_path)
+            .to_string_lossy()
+            .to_string();
+
+        let mut index = VectorIndex::open_or_create(&self.knowledge_base, 256)?;
+
+        // Train model on all corpus if index is empty
+        if index.is_empty() {
+            let docs = self.collect_corpus_texts()?;
+            index.train_model(&docs);
+        }
+
+        index.index_entry(&rel_path, &entry.title, &entry.domain, &body);
+        let vector = index.search(&format!("{} {}", entry.title, body), 1);
+        index.save()?;
+
+        Ok(vector.into_iter().next().unwrap_or(VectorHit {
+            path: rel_path,
+            title: entry.title,
+            domain: entry.domain,
+            score: 0.0,
+        }))
+    }
+
+    /// Embed all wiki entries and rebuild the vector index.
+    ///
+    /// Scans all wiki files, trains the TF-IDF model on the full corpus,
+    /// then indexes every entry. Returns the number of entries indexed.
+    pub fn batch_embed_all(&self) -> PdfResult<usize> {
+        let wiki_dir = self.wiki_dir();
+
+        // Collect all entries
+        let mut entries_data: Vec<(String, String, String, String)> = Vec::new(); // (path, title, domain, body)
+        self.scan_for_embedding(&wiki_dir, &wiki_dir, &mut entries_data)?;
+
+        if entries_data.is_empty() {
+            info!("No entries found for embedding");
+            return Ok(0);
+        }
+
+        let mut index = VectorIndex::open_or_create(&self.knowledge_base, 256)?;
+
+        // Train on full corpus
+        let docs: Vec<String> = entries_data
+            .iter()
+            .map(|(_, title, _, body)| format!("{} {}", title, body))
+            .collect();
+        index.train_model(&docs);
+
+        // Index every entry
+        for (path, title, domain, body) in &entries_data {
+            index.index_entry(path, title, domain, body);
+        }
+
+        let count = index.len();
+        index.save()?;
+
+        info!(count = count, "Batch embed all complete");
+        Ok(count)
+    }
+
+    /// Collect corpus texts from all wiki entries for model training.
+    fn collect_corpus_texts(&self) -> PdfResult<Vec<String>> {
+        let wiki_dir = self.wiki_dir();
+        let mut docs = Vec::new();
+        self.scan_corpus(&wiki_dir, &wiki_dir, &mut docs)?;
+        Ok(docs)
+    }
+
+    #[allow(clippy::only_used_in_recursion)]
+    fn scan_corpus(&self, base: &Path, dir: &Path, docs: &mut Vec<String>) -> PdfResult<()> {
+        if !dir.exists() {
+            return Ok(());
+        }
+        for entry in fs::read_dir(dir)
+            .map_err(|e| PdfModuleError::Storage(format!("Failed to read dir: {}", e)))?
+        {
+            let entry = entry
+                .map_err(|e| PdfModuleError::Storage(format!("Failed to read entry: {}", e)))?;
+            let path = entry.path();
+            if path.is_dir() {
+                self.scan_corpus(base, &path, docs)?;
+            } else if path.extension().map(|e| e == "md").unwrap_or(false) {
+                let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if filename == "index.md" || filename == "log.md" {
+                    continue;
+                }
+                if let Ok(content) = fs::read_to_string(&path) {
+                    if let Some(entry) = KnowledgeEntry::from_markdown(&content) {
+                        let body = content.split("---").nth(2).unwrap_or("").to_string();
+                        docs.push(format!("{} {}", entry.title, body));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::only_used_in_recursion)]
+    fn scan_for_embedding(
+        &self,
+        base: &Path,
+        dir: &Path,
+        results: &mut Vec<(String, String, String, String)>,
+    ) -> PdfResult<()> {
+        if !dir.exists() {
+            return Ok(());
+        }
+        for entry in fs::read_dir(dir)
+            .map_err(|e| PdfModuleError::Storage(format!("Failed to read dir: {}", e)))?
+        {
+            let entry = entry
+                .map_err(|e| PdfModuleError::Storage(format!("Failed to read entry: {}", e)))?;
+            let path = entry.path();
+            if path.is_dir() {
+                self.scan_for_embedding(base, &path, results)?;
+            } else if path.extension().map(|e| e == "md").unwrap_or(false) {
+                let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if filename == "index.md" || filename == "log.md" {
+                    continue;
+                }
+                if let Ok(content) = fs::read_to_string(&path) {
+                    if let Some(entry) = KnowledgeEntry::from_markdown(&content) {
+                        let body = content.split("---").nth(2).unwrap_or("").to_string();
+                        let rel = path
+                            .strip_prefix(base)
+                            .unwrap_or(&path)
+                            .to_string_lossy()
+                            .to_string();
+                        results.push((rel, entry.title, entry.domain, body));
                     }
                 }
             }

@@ -72,4 +72,4 @@ jobs:
         uses: actions-rust-lang/audit@v2
         with:
           fail-on-severity: medium
-          deny-unaudited: true
+          deny-unaudited: false

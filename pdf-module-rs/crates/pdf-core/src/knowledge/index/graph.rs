@@ -6,18 +6,21 @@
 //! - Orphan detection (no incoming or outgoing edges)
 //! - Link suggestion (Jaccard similarity on tags)
 //! - Concept map export (Mermaid.js format)
+//! - Disk persistence via bincode serialization
 
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::EdgeRef;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use tracing::{debug, info};
 
 use crate::error::{PdfModuleError, PdfResult};
 use crate::knowledge::entry::KnowledgeEntry;
 
 /// Metadata stored at each graph node.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeMeta {
     pub path: String,
     pub title: String,
@@ -27,7 +30,7 @@ pub struct NodeMeta {
 }
 
 /// Edge type in the knowledge graph.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EdgeKind {
     Related,
     Contradiction,
@@ -53,6 +56,14 @@ pub struct LinkSuggestion {
     pub reason: String,
 }
 
+/// Serializable snapshot of the graph for disk persistence.
+#[derive(Serialize, Deserialize)]
+struct GraphSnapshot {
+    nodes: Vec<NodeMeta>,
+    edges: Vec<(usize, usize, EdgeKind)>,
+    path_to_index: Vec<(String, usize)>,
+}
+
 /// Directed graph index over knowledge entries.
 pub struct GraphIndex {
     graph: DiGraph<NodeMeta, EdgeKind>,
@@ -66,6 +77,130 @@ impl GraphIndex {
         Self {
             graph: DiGraph::new(),
             path_to_node: HashMap::new(),
+        }
+    }
+
+    /// Save the graph to disk using bincode serialization.
+    ///
+    /// The graph is saved to `<knowledge_base>/.rsut_index/graph.bin`.
+    /// If the directory does not exist, it is created.
+    pub fn save_to_disk(&self, knowledge_base: &Path) -> PdfResult<()> {
+        let index_dir = knowledge_base.join(".rsut_index");
+        fs::create_dir_all(&index_dir).map_err(|e| {
+            PdfModuleError::Storage(format!("Failed to create index dir: {}", e))
+        })?;
+
+        let snapshot = self.to_snapshot();
+        let bytes = bincode::serialize(&snapshot).map_err(|e| {
+            PdfModuleError::Storage(format!("Failed to serialize graph: {}", e))
+        })?;
+
+        let path = index_dir.join("graph.bin");
+        fs::write(&path, &bytes).map_err(|e| {
+            PdfModuleError::Storage(format!("Failed to write graph to disk: {}", e))
+        })?;
+
+        info!(nodes = self.graph.node_count(), edges = self.graph.edge_count(), path = ?path, "Graph saved to disk");
+        Ok(())
+    }
+
+    /// Load the graph from disk, falling back to a fresh rebuild if the file
+    /// is missing or corrupt.
+    ///
+    /// Returns the loaded graph and a boolean indicating whether a rebuild was needed.
+    pub fn load_from_disk_or_rebuild(
+        knowledge_base: &Path,
+        wiki_dir: &Path,
+    ) -> PdfResult<(Self, bool)> {
+        let graph_path = knowledge_base.join(".rsut_index").join("graph.bin");
+
+        if graph_path.exists() {
+            match Self::load_from_disk(&graph_path) {
+                Ok(graph) => {
+                    info!(nodes = graph.node_count(), "Graph loaded from disk cache");
+                    return Ok((graph, false));
+                }
+                Err(e) => {
+                    debug!(error = %e, "Graph cache corrupt, falling back to rebuild");
+                }
+            }
+        }
+
+        let mut graph = Self::new();
+        graph.rebuild(wiki_dir)?;
+        graph.save_to_disk(knowledge_base)?;
+        Ok((graph, true))
+    }
+
+    /// Load graph from a bincode snapshot file.
+    fn load_from_disk(path: &Path) -> PdfResult<Self> {
+        let bytes = fs::read(path).map_err(|e| {
+            PdfModuleError::Storage(format!("Failed to read graph cache: {}", e))
+        })?;
+        let snapshot: GraphSnapshot = bincode::deserialize(&bytes).map_err(|e| {
+            PdfModuleError::Storage(format!("Failed to deserialize graph: {}", e))
+        })?;
+        Ok(Self::from_snapshot(snapshot))
+    }
+
+    fn to_snapshot(&self) -> GraphSnapshot {
+        let nodes: Vec<NodeMeta> = self.graph.node_indices().map(|idx| self.graph[idx].clone()).collect();
+
+        let mut node_idx_to_usize = HashMap::new();
+        for (i, idx) in self.graph.node_indices().enumerate() {
+            node_idx_to_usize.insert(idx, i);
+        }
+
+        let edges: Vec<(usize, usize, EdgeKind)> = self
+            .graph
+            .edge_references()
+            .map(|e| {
+                (
+                    node_idx_to_usize[&e.source()],
+                    node_idx_to_usize[&e.target()],
+                    e.weight().clone(),
+                )
+            })
+            .collect();
+
+        let path_to_index: Vec<(String, usize)> = self
+            .path_to_node
+            .iter()
+            .map(|(path, idx)| (path.clone(), node_idx_to_usize[idx]))
+            .collect();
+
+        GraphSnapshot {
+            nodes,
+            edges,
+            path_to_index,
+        }
+    }
+
+    fn from_snapshot(snapshot: GraphSnapshot) -> Self {
+        let mut graph = DiGraph::new();
+        let mut path_to_node = HashMap::new();
+
+        let node_indices: Vec<NodeIndex> = snapshot
+            .nodes
+            .into_iter()
+            .map(|meta| graph.add_node(meta))
+            .collect();
+
+        for (from, to, kind) in snapshot.edges {
+            if from < node_indices.len() && to < node_indices.len() {
+                graph.add_edge(node_indices[from], node_indices[to], kind);
+            }
+        }
+
+        for (path, idx) in snapshot.path_to_index {
+            if idx < node_indices.len() {
+                path_to_node.insert(path, node_indices[idx]);
+            }
+        }
+
+        Self {
+            graph,
+            path_to_node,
         }
     }
 
@@ -117,7 +252,8 @@ impl GraphIndex {
 
             for contra in &entry.contradictions {
                 if let Some(&to_idx) = self.path_to_node.get(contra) {
-                    self.graph.add_edge(from_idx, to_idx, EdgeKind::Contradiction);
+                    self.graph
+                        .add_edge(from_idx, to_idx, EdgeKind::Contradiction);
                 }
             }
         }
@@ -128,8 +264,10 @@ impl GraphIndex {
             for j in (i + 1)..node_indices.len() {
                 let ni = node_indices[i];
                 let nj = node_indices[j];
-                let tags_a: HashSet<&str> = self.graph[ni].tags.iter().map(|s| s.as_str()).collect();
-                let tags_b: HashSet<&str> = self.graph[nj].tags.iter().map(|s| s.as_str()).collect();
+                let tags_a: HashSet<&str> =
+                    self.graph[ni].tags.iter().map(|s| s.as_str()).collect();
+                let tags_b: HashSet<&str> =
+                    self.graph[nj].tags.iter().map(|s| s.as_str()).collect();
                 let intersection = tags_a.intersection(&tags_b).count();
                 let union = tags_a.union(&tags_b).count();
                 if union > 0 {
@@ -193,10 +331,13 @@ impl GraphIndex {
         self.graph
             .node_indices()
             .filter(|&idx| {
-                let has_relation = self.graph.edges(idx).any(|e| {
-                    matches!(e.weight(), EdgeKind::Related | EdgeKind::Contradiction)
-                });
-                let has_incoming = self.graph.edges_directed(idx, petgraph::Direction::Incoming)
+                let has_relation = self
+                    .graph
+                    .edges(idx)
+                    .any(|e| matches!(e.weight(), EdgeKind::Related | EdgeKind::Contradiction));
+                let has_incoming = self
+                    .graph
+                    .edges_directed(idx, petgraph::Direction::Incoming)
                     .any(|e| matches!(e.weight(), EdgeKind::Related | EdgeKind::Contradiction));
                 !has_relation && !has_incoming
             })
@@ -217,15 +358,15 @@ impl GraphIndex {
         }
 
         // Find existing direct connections
-        let existing: HashSet<NodeIndex> = self.graph.edges(start)
-            .map(|e| e.target())
-            .collect();
+        let existing: HashSet<NodeIndex> = self.graph.edges(start).map(|e| e.target()).collect();
 
-        let mut suggestions: Vec<LinkSuggestion> = self.graph
+        let mut suggestions: Vec<LinkSuggestion> = self
+            .graph
             .node_indices()
             .filter(|&idx| idx != start && !existing.contains(&idx))
             .filter_map(|idx| {
-                let tags_b: HashSet<&str> = self.graph[idx].tags.iter().map(|s| s.as_str()).collect();
+                let tags_b: HashSet<&str> =
+                    self.graph[idx].tags.iter().map(|s| s.as_str()).collect();
                 let intersection = tags_a.intersection(&tags_b).count();
                 let union = tags_a.union(&tags_b).count();
                 if union == 0 || intersection == 0 {
@@ -235,7 +376,8 @@ impl GraphIndex {
                 if jaccard < 0.1 {
                     return None;
                 }
-                let shared: Vec<String> = tags_a.intersection(&tags_b)
+                let shared: Vec<String> = tags_a
+                    .intersection(&tags_b)
                     .map(|s| s.to_string())
                     .collect();
                 Some(LinkSuggestion {
@@ -247,7 +389,11 @@ impl GraphIndex {
             })
             .collect();
 
-        suggestions.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        suggestions.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         suggestions.truncate(top_k);
         suggestions
     }
@@ -257,7 +403,10 @@ impl GraphIndex {
         let start = match self.path_to_node.get(center_path) {
             Some(idx) => *idx,
             None => {
-                return format!("graph LR\n    error[\"Entry not found: {}\"]\n", center_path);
+                return format!(
+                    "graph LR\n    error[\"Entry not found: {}\"]\n",
+                    center_path
+                );
             }
         };
 
@@ -286,7 +435,10 @@ impl GraphIndex {
                 }
             }
             // Also check incoming edges
-            for edge in self.graph.edges_directed(node, petgraph::Direction::Incoming) {
+            for edge in self
+                .graph
+                .edges_directed(node, petgraph::Direction::Incoming)
+            {
                 let source = edge.source();
                 let is_new = nodes.insert(source);
                 let kind = match edge.weight() {
@@ -304,12 +456,10 @@ impl GraphIndex {
         // Build Mermaid diagram
         let mut mermaid = String::from("graph LR\n");
         let mut node_ids = HashMap::new();
-        let mut counter = 0u32;
 
-        for idx in &nodes {
+        for (counter, idx) in nodes.iter().enumerate() {
             let meta = &self.graph[*idx];
             let safe_id = format!("n{}", counter);
-            counter += 1;
             let label = meta.title.replace('"', "'");
             let style = if *idx == start {
                 format!("    {}[\"{}\"]:::center\n", safe_id, label)
@@ -323,8 +473,8 @@ impl GraphIndex {
         // Deduplicate edges
         let mut seen_edges = HashSet::new();
         for (from, to, kind) in &edges {
-            let from_id = node_ids.get(from).unwrap();
-            let to_id = node_ids.get(to).unwrap();
+            let from_id = node_ids.get(from).expect("node should exist in map");
+            let to_id = node_ids.get(to).expect("node should exist in map");
             let key = (from_id.clone(), to_id.clone(), *kind);
             if seen_edges.insert(key) {
                 let arrow = match *kind {
@@ -332,10 +482,7 @@ impl GraphIndex {
                     "co-tags" => " -.-> ",
                     _ => " --> ",
                 };
-                mermaid.push_str(&format!(
-                    "    {} {}|{}| {}\n",
-                    from_id, arrow, kind, to_id
-                ));
+                mermaid.push_str(&format!("    {} {}|{}| {}\n", from_id, arrow, kind, to_id));
             }
         }
 
@@ -358,8 +505,19 @@ impl GraphIndex {
         self.graph.edge_count()
     }
 
+    /// Get a reference to the internal graph (for community detection).
+    pub fn graph(&self) -> &DiGraph<NodeMeta, EdgeKind> {
+        &self.graph
+    }
+
+    /// Get a reference to the path-to-node mapping.
+    pub fn path_to_node(&self) -> &HashMap<String, NodeIndex> {
+        &self.path_to_node
+    }
+
+    #[allow(clippy::only_used_in_recursion)]
     fn scan_entries(
-        base: &Path,
+        _base: &Path,
         dir: &Path,
         entries: &mut Vec<(PathBuf, KnowledgeEntry)>,
     ) -> PdfResult<()> {
@@ -367,14 +525,13 @@ impl GraphIndex {
             return Ok(());
         }
         for entry in fs::read_dir(dir)
-            .map_err(|e| PdfModuleError::StorageError(format!("Failed to read dir: {}", e)))?
+            .map_err(|e| PdfModuleError::Storage(format!("Failed to read dir: {}", e)))?
         {
-            let entry = entry.map_err(|e| {
-                PdfModuleError::StorageError(format!("Failed to read entry: {}", e))
-            })?;
+            let entry = entry
+                .map_err(|e| PdfModuleError::Storage(format!("Failed to read entry: {}", e)))?;
             let path = entry.path();
             if path.is_dir() {
-                Self::scan_entries(base, &path, entries)?;
+                Self::scan_entries(_base, &path, entries)?;
             } else if path.extension().map(|e| e == "md").unwrap_or(false) {
                 let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                 if filename == "index.md" || filename == "log.md" {
@@ -394,5 +551,80 @@ impl GraphIndex {
 impl Default for GraphIndex {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn make_test_graph() -> (TempDir, GraphIndex) {
+        let dir = TempDir::new().unwrap();
+        let wiki = dir.path().join("wiki").join("it");
+        fs::create_dir_all(&wiki).unwrap();
+
+        let md1 = r#"---
+title: "Entry A"
+domain: "IT"
+tags: ["rust", "systems"]
+level: L1
+status: compiled
+created: 2026-01-01T00:00:00Z
+updated: 2026-01-01T00:00:00Z
+related: ["wiki/it/[IT] Entry_B.md"]
+---
+
+Body A"#;
+        let md2 = r#"---
+title: "Entry B"
+domain: "IT"
+tags: ["rust", "async"]
+level: L1
+status: compiled
+created: 2026-01-01T00:00:00Z
+updated: 2026-01-01T00:00:00Z
+related: ["wiki/it/[IT] Entry_A.md"]
+---
+
+Body B"#;
+        fs::write(wiki.join("[IT] Entry_A.md"), md1).unwrap();
+        fs::write(wiki.join("[IT] Entry_B.md"), md2).unwrap();
+
+        let mut graph = GraphIndex::new();
+        graph.rebuild(dir.path().join("wiki").as_path()).unwrap();
+        (dir, graph)
+    }
+
+    #[test]
+    fn test_graph_save_load_roundtrip() {
+        let (dir, graph) = make_test_graph();
+        assert_eq!(graph.node_count(), 2);
+        assert!(graph.edge_count() > 0);
+
+        // Save
+        graph.save_to_disk(dir.path()).unwrap();
+
+        // Load
+        let wiki_dir = dir.path().join("wiki");
+        let (loaded, rebuilt) = GraphIndex::load_from_disk_or_rebuild(dir.path(), &wiki_dir).unwrap();
+        assert!(!rebuilt, "should load from cache, not rebuild");
+        assert_eq!(loaded.node_count(), 2);
+        assert_eq!(loaded.edge_count(), graph.edge_count());
+    }
+
+    #[test]
+    fn test_graph_rebuild_on_corrupt_cache() {
+        let (dir, graph) = make_test_graph();
+        graph.save_to_disk(dir.path()).unwrap();
+
+        // Corrupt the cache
+        let graph_path = dir.path().join(".rsut_index").join("graph.bin");
+        fs::write(&graph_path, b"corrupted data").unwrap();
+
+        let wiki_dir = dir.path().join("wiki");
+        let (loaded, rebuilt) = GraphIndex::load_from_disk_or_rebuild(dir.path(), &wiki_dir).unwrap();
+        assert!(rebuilt, "should rebuild on corrupt cache");
+        assert_eq!(loaded.node_count(), 2);
     }
 }

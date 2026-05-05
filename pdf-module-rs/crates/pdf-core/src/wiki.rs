@@ -27,15 +27,12 @@ impl WikiStorage {
     pub fn new(base_path: impl AsRef<Path>) -> PdfResult<Self> {
         let base_path = base_path.as_ref().to_path_buf();
 
-        fs::create_dir_all(base_path.join("raw")).map_err(|e| {
-            PdfModuleError::StorageError(format!("Failed to create raw dir: {}", e))
-        })?;
-        fs::create_dir_all(base_path.join("wiki")).map_err(|e| {
-            PdfModuleError::StorageError(format!("Failed to create wiki dir: {}", e))
-        })?;
-        fs::create_dir_all(base_path.join("schema")).map_err(|e| {
-            PdfModuleError::StorageError(format!("Failed to create schema dir: {}", e))
-        })?;
+        fs::create_dir_all(base_path.join("raw"))
+            .map_err(|e| PdfModuleError::Storage(format!("Failed to create raw dir: {}", e)))?;
+        fs::create_dir_all(base_path.join("wiki"))
+            .map_err(|e| PdfModuleError::Storage(format!("Failed to create wiki dir: {}", e)))?;
+        fs::create_dir_all(base_path.join("schema"))
+            .map_err(|e| PdfModuleError::Storage(format!("Failed to create schema dir: {}", e)))?;
 
         Ok(Self { base_path })
     }
@@ -80,7 +77,7 @@ impl WikiStorage {
         text: &str,
     ) -> PdfResult<()> {
         let yaml = serde_yaml::to_string(metadata)
-            .map_err(|e| PdfModuleError::StorageError(format!("YAML error: {}", e)))?;
+            .map_err(|e| PdfModuleError::Storage(format!("YAML error: {}", e)))?;
 
         let content = format!(
             "---\n{}---\n\n# {}\n\n## 文档信息\n\n- 页数: {}\n- 质量: {:.0}%\n- 提取时间: {}\n\n## 正文\n\n{}",
@@ -92,13 +89,11 @@ impl WikiStorage {
             Self::format_text(text)
         );
 
-        let mut file = File::create(path).map_err(|e| {
-            PdfModuleError::StorageError(format!("Failed to create raw file: {}", e))
-        })?;
+        let mut file = File::create(path)
+            .map_err(|e| PdfModuleError::Storage(format!("Failed to create raw file: {}", e)))?;
 
-        file.write_all(content.as_bytes()).map_err(|e| {
-            PdfModuleError::StorageError(format!("Failed to write raw file: {}", e))
-        })?;
+        file.write_all(content.as_bytes())
+            .map_err(|e| PdfModuleError::Storage(format!("Failed to write raw file: {}", e)))?;
 
         Ok(())
     }
@@ -121,7 +116,7 @@ impl WikiStorage {
 
         if wiki_dir.exists() {
             for entry in fs::read_dir(&wiki_dir)
-                .map_err(|e| PdfModuleError::StorageError(format!("Read wiki dir error: {}", e)))?
+                .map_err(|e| PdfModuleError::Storage(format!("Read wiki dir error: {}", e)))?
                 .filter_map(|e| e.ok())
             {
                 let path = entry.path();
@@ -143,10 +138,10 @@ impl WikiStorage {
         let content = Self::build_index(&entities);
 
         let mut file = File::create(&index_path)
-            .map_err(|e| PdfModuleError::StorageError(format!("Index create error: {}", e)))?;
+            .map_err(|e| PdfModuleError::Storage(format!("Index create error: {}", e)))?;
 
         file.write_all(content.as_bytes())
-            .map_err(|e| PdfModuleError::StorageError(format!("Index write error: {}", e)))?;
+            .map_err(|e| PdfModuleError::Storage(format!("Index write error: {}", e)))?;
 
         Ok(index_path)
     }

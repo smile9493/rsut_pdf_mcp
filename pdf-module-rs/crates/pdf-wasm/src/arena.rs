@@ -4,24 +4,24 @@
 //! processing each PDF page, providing O(1) deallocation for temporary
 //! buffers and avoiding WASM linear memory fragmentation.
 
-use bumpalo::Bump;
 use crate::error::WasmError;
+use bumpalo::Bump;
 
 /// WASM PDF engine with Arena allocator for efficient memory management.
 ///
 /// The arena is reset after each PDF processing operation, freeing all
 /// temporary allocations in bulk. This prevents memory leaks in long-running
 /// WASM sessions and reduces fragmentation compared to individual allocations.
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
 pub struct WasmPdfEngine {
     arena: Bump,
 }
 
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
 impl WasmPdfEngine {
     /// Create a new WASM PDF engine with a fresh arena.
     pub fn new() -> Self {
-        Self {
-            arena: Bump::new(),
-        }
+        Self { arena: Bump::new() }
     }
 
     /// Create an engine with a pre-allocated arena capacity hint.
@@ -63,18 +63,22 @@ impl WasmPdfEngine {
     ///
     /// This demonstrates the arena pattern: all temporary allocations
     /// happen in the arena, then the result is extracted as an owned String.
-    pub fn extract_text_with_arena(
-        &mut self,
-        pdf_data: &[u8],
-    ) -> Result<String, WasmError> {
-        // Use arena for temporary buffer
-        let _temp_buffer = self.arena.alloc_slice_copy(pdf_data);
+    /// Process a PDF buffer using arena-allocated temporary storage.
+    ///
+    /// This demonstrates the arena pattern: all temporary allocations
+    /// happen in the arena, then the result is extracted as an owned String.
+    /// In a real implementation, pdfium would write into the arena-allocated
+    /// buffer rather than the original `pdf_data` slice.
+    pub fn extract_text_with_arena(&mut self, pdf_data: &[u8]) -> Result<String, WasmError> {
+        // Arena copy simulates pdfium writing into arena-allocated buffer
+        let _arena_buffer = self.arena.alloc_slice_copy(pdf_data);
 
-        // Simulate text extraction (actual pdfium integration would go here)
+        // Real pdfium integration would process _arena_buffer and produce text.
+        // Currently simulates extraction from the original data.
         let extracted = String::from_utf8(pdf_data.to_vec())
             .map_err(|e| WasmError::ExtractionError(e.to_string()))?;
 
-        // Reset arena to free temporary allocations
+        // Reset arena to free all temporary allocations in O(1)
         self.reset_arena();
 
         Ok(extracted)

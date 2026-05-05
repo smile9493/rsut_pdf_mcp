@@ -104,9 +104,8 @@ impl McpPdfPipeline {
 
     pub fn with_vlm(config: &ServerConfig, vlm_config: VlmConfig) -> PdfResult<Self> {
         let metrics = Arc::new(MetricsCollector::with_default_registry());
-        let vlm_gateway = VlmGateway::new(vlm_config, Arc::clone(&metrics)).map_err(|e| {
-            crate::error::PdfModuleError::ConfigError(format!("VLM gateway: {}", e))
-        })?;
+        let vlm_gateway = VlmGateway::new(vlm_config, Arc::clone(&metrics))
+            .map_err(|e| crate::error::PdfModuleError::Config(format!("VLM gateway: {}", e)))?;
 
         Ok(Self {
             validator: FileValidator::new(config.security.max_file_size_mb as u32),

@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Knowledge Base Dashboard</title>
+<style>
+:root {
+  --bg: #0f172a;
+  --card: #1e293b;
+  --border: #334155;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #3b82f6;
+  --green: #22c55e;
+  --yellow: #eab308;
+  --red: #ef4444;
+  --radius: 12px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 24px;
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.header .subtitle {
+  font-size: 0.875rem;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+}
+.btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: all 0.15s;
+}
+.btn:hover { border-color: var(--accent); background: #1e3a5f; }
+.btn.primary { background: var(--accent); border-color: var(--accent); }
+.btn.primary:hover { background: #2563eb; }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+.card .label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.card .value {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.card .detail {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.value.green { color: var(--green); }
+.value.yellow { color: var(--yellow); }
+.value.red { color: var(--red); }
+.value.blue { color: var(--accent); }
+.section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.section h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.domain-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tag {
+  padding: 4px 12px;
+  background: #1e3a5f;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  color: var(--accent);
+}
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  font-size: 0.875rem;
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot.green { background: var(--green); }
+.dot.yellow { background: var(--yellow); }
+.dot.red { background: var(--red); }
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--muted);
+}
+.empty-state h2 { font-size: 1.25rem; margin-bottom: 8px; color: var(--text); }
+.chart-container {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.pie-area { width: 180px; height: 180px; flex-shrink: 0; }
+.pie-area svg { width: 100%; height: 100%; }
+.legend { display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+.legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; }
+.legend-color { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+.refreshing { opacity: 0.5; pointer-events: none; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>Knowledge Base Dashboard</h1>
+      <div class="subtitle" id="generated-at">Loading...</div>
+    </div>
+    <div class="actions">
+      <button class="btn" id="btn-refresh" onclick="requestHealth()">Refresh</button>
+      <button class="btn primary" id="btn-rebuild" onclick="requestRebuild()">Rebuild Index</button>
+    </div>
+  </div>
+
+  <div class="status-bar" id="status-bar">
+    <div class="dot green" id="status-dot"></div>
+    <span id="status-text">Connecting...</span>
+  </div>
+
+  <div id="dashboard-content" style="display:none;">
+    <div class="grid" id="metrics-grid">
+      <div class="card">
+        <div class="label">Total Entries</div>
+        <div class="value blue" id="total-entries">--</div>
+      </div>
+      <div class="card">
+        <div class="label">Orphan Entries</div>
+        <div class="value yellow" id="orphan-count">--</div>
+      </div>
+      <div class="card">
+        <div class="label">Contradictions</div>
+        <div class="value red" id="contradiction-count">--</div>
+      </div>
+      <div class="card">
+        <div class="label">Broken Links</div>
+        <div class="value yellow" id="broken-link-count">--</div>
+      </div>
+      <div class="card">
+        <div class="label">Index Size</div>
+        <div class="value" id="index-size">--</div>
+      </div>
+      <div class="card">
+        <div class="label">Avg Quality</div>
+        <div class="value green" id="avg-quality">--</div>
+      </div>
+      <div class="card">
+        <div class="label">Graph Nodes</div>
+        <div class="value" id="graph-nodes">--</div>
+        <div class="detail" id="graph-edges">-- edges</div>
+      </div>
+      <div class="card">
+        <div class="label">Last Compile</div>
+        <div class="value" style="font-size:1rem;" id="last-compile">--</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Domains</h2>
+      <div class="domain-list" id="domains-list"></div>
+    </div>
+
+    <div class="section">
+      <h2>Domain Distribution</h2>
+      <div class="chart-container">
+        <div class="pie-area" id="pie-chart"></div>
+        <div class="legend" id="pie-legend"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="empty-state" class="empty-state">
+    <h2>No Data Available</h2>
+    <p>Click "Refresh" to fetch the knowledge base health report.</p>
+  </div>
+
+<script>
+(function() {
+  const isMcpApp = window.parent !== window;
+
+  function requestHealth() {
+    const btn = document.getElementById('btn-refresh');
+    btn.classList.add('refreshing');
+    document.getElementById('status-text').textContent = 'Fetching data...';
+
+    if (isMcpApp) {
+      window.parent.postMessage({ type: 'mcp-tool-call', tool: 'get_health_report', arguments: {} }, '*');
+    } else {
+      // Standalone mode: show placeholder
+      document.getElementById('status-text').textContent = 'Standalone mode — data requires MCP host.';
+      btn.classList.remove('refreshing');
+      showMockData();
+    }
+  }
+
+  function requestRebuild() {
+    if (isMcpApp) {
+      window.parent.postMessage({ type: 'mcp-tool-call', tool: 'rebuild_index', arguments: {} }, '*');
+      document.getElementById('status-text').textContent = 'Rebuilding indexes...';
+    } else {
+      document.getElementById('status-text').textContent = 'Standalone mode — rebuild requires MCP host.';
+    }
+  }
+
+  function handleMessage(event) {
+    if (event.data && event.data.type === 'mcp-tool-result') {
+      const btn = document.getElementById('btn-refresh');
+      btn.classList.remove('refreshing');
+      try {
+        const data = typeof event.data.result === 'string'
+          ? JSON.parse(event.data.result)
+          : event.data.result;
+        renderDashboard(data);
+      } catch (e) {
+        document.getElementById('status-text').textContent = 'Error parsing data: ' + e.message;
+      }
+    }
+  }
+
+  function renderDashboard(data) {
+    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('dashboard-content').style.display = 'block';
+
+    const dot = document.getElementById('status-dot');
+    if (data.total_entries > 0) {
+      dot.className = 'dot green';
+      document.getElementById('status-text').textContent = 'Connected — data loaded successfully';
+    } else {
+      dot.className = 'dot yellow';
+      document.getElementById('status-text').textContent = 'Connected — empty knowledge base';
+    }
+
+    document.getElementById('generated-at').textContent =
+      'Generated: ' + (data.generated_at ? new Date(data.generated_at).toLocaleString() : '--');
+    document.getElementById('total-entries').textContent = data.total_entries ?? '--';
+    document.getElementById('orphan-count').textContent = data.orphan_count ?? '--';
+    document.getElementById('contradiction-count').textContent = data.contradiction_count ?? '--';
+    document.getElementById('broken-link-count').textContent = data.broken_link_count ?? '--';
+    document.getElementById('index-size').textContent = (data.index_size_mb ?? '--') + ' MB';
+    document.getElementById('avg-quality').textContent = data.avg_quality_score ?? '--';
+    document.getElementById('graph-nodes').textContent = data.graph_nodes ?? '--';
+    document.getElementById('graph-edges').textContent = (data.graph_edges ?? '--') + ' edges';
+
+    const lc = data.last_compile;
+    document.getElementById('last-compile').textContent = lc
+      ? new Date(lc).toLocaleString()
+      : 'Never';
+
+    // Quality color
+    const qEl = document.getElementById('avg-quality');
+    const qp = parseFloat(data.avg_quality_score) || 0;
+    qEl.className = 'value ' + (qp >= 70 ? 'green' : qp >= 40 ? 'yellow' : 'red');
+
+    // Orphan color
+    const oEl = document.getElementById('orphan-count');
+    oEl.className = 'value ' + ((data.orphan_count || 0) === 0 ? 'green' : 'yellow');
+
+    // Domains
+    const domains = data.domains || [];
+    const dl = document.getElementById('domains-list');
+    dl.innerHTML = '';
+    domains.forEach(function(d) {
+      const span = document.createElement('span');
+      span.className = 'tag';
+      span.textContent = d;
+      dl.appendChild(span);
+    });
+
+    // Pie chart
+    renderPieChart(domains, data.total_entries || 1);
+  }
+
+  function renderPieChart(domains, total) {
+    const area = document.getElementById('pie-chart');
+    const legend = document.getElementById('pie-legend');
+    area.innerHTML = '';
+    legend.innerHTML = '';
+
+    if (domains.length === 0) {
+      area.innerHTML = '<svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15.9" fill="none" stroke="#334155" stroke-width="3"/></svg>';
+      return;
+    }
+
+    const colors = ['#3b82f6','#22c55e','#eab308','#ef4444','#a855f7','#ec4899','#14b8a6','#f97316','#6366f1','#84cc16'];
+    const n = domains.length;
+    let offset = 0;
+    let svgParts = [];
+
+    for (let i = 0; i < n; i++) {
+      const pct = (1 / n) * 100;
+      const color = colors[i % colors.length];
+      svgParts.push(
+        '<circle cx="18" cy="18" r="15.9" fill="none" stroke="' + color +
+        '" stroke-width="3" stroke-dasharray="' + pct + ' ' + (100 - pct) +
+        '" stroke-dashoffset="-' + offset + '" transform="rotate(-90 18 18)"/>'
+      );
+      offset += pct;
+
+      const item = document.createElement('div');
+      item.className = 'legend-item';
+      item.innerHTML = '<div class="legend-color" style="background:' + color + '"></div><span>' + domains[i] + '</span>';
+      legend.appendChild(item);
+    }
+
+    area.innerHTML = '<svg viewBox="0 0 36 36">' + svgParts.join('') + '</svg>';
+  }
+
+  function showMockData() {
+    renderDashboard({
+      total_entries: 0,
+      orphan_count: 0,
+      contradiction_count: 0,
+      broken_link_count: 0,
+      index_size_mb: 0,
+      avg_quality_score: '0.0%',
+      domains: [],
+      graph_nodes: 0,
+      graph_edges: 0,
+      last_compile: null,
+      generated_at: new Date().toISOString(),
+    });
+  }
+
+  window.addEventListener('message', handleMessage);
+  window.requestHealth = requestHealth;
+  window.requestRebuild = requestRebuild;
+
+  // Auto-request data on load if embedded
+  if (isMcpApp) {
+    requestHealth();
+  }
+})();
+</script>
+</body>
+</html>

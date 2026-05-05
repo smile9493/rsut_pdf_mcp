@@ -53,7 +53,7 @@ impl ProgressTracker {
         let pb = self.multi_progress.add(ProgressBar::new(total_pages));
         pb.set_style(
             ProgressStyle::with_template(&self.config.template)
-                .unwrap()
+                .expect("valid progress template")
                 .progress_chars("█▉▊▋▌▍▎▏  ")
                 .tick_chars("⠁⠃⠇⡇⣇⣧⣷⣿"),
         );
@@ -68,7 +68,7 @@ impl ProgressTracker {
             ProgressStyle::with_template(
                 "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} files ({percent}%) ETA: {eta}",
             )
-            .unwrap()
+            .expect("valid progress template")
             .progress_chars("█▉▊▋▌▍▎▏  "),
         );
         pb.set_message("Batch processing");

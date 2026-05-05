@@ -20,4 +20,6 @@ dotenvy = { workspace = true }
 anyhow = { workspace = true }
 tokio-util = { workspace = true }
 thiserror = { workspace = true }
+chrono = { workspace = true }
+rust-embed = { workspace = true }
 regex = "1"

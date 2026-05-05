@@ -5,9 +5,12 @@ use crate::sampling::{
 };
 use pdf_core::{
     dto::*,
+    management::{ConfigManager, HealthReporter},
     wiki::{AgentPayload, WikiStorage},
     FulltextIndex, GraphIndex, KnowledgeEngine, McpPdfPipeline, PathValidationConfig,
 };
+use rust_embed::RustEmbed;
+use std::borrow::Cow;
 use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -15,6 +18,10 @@ use tokio::signal;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info};
+
+#[derive(RustEmbed)]
+#[folder = "src/ui/"]
+struct UiAssets;
 
 #[allow(dead_code)]
 pub struct ToolStats {
@@ -304,6 +311,8 @@ pub async fn handle_request(
         "initialize" => handle_initialize(&request),
         "tools/list" => handle_tools_list(&request),
         "tools/call" => handle_tools_call(pipeline, &request).await,
+        "resources/list" => handle_resources_list(&request),
+        "resources/read" => handle_resources_read(&request),
         _ => JsonRpcResponse::error(request.id, JsonRpcError::method_not_found(&request.method)),
     };
     Some(response)
@@ -319,12 +328,13 @@ fn handle_initialize(request: &JsonRpcRequest) -> JsonRpcResponse {
         },
         "capabilities": {
             "tools": { "listChanged": false },
+            "resources": { "listChanged": false },
             "sampling": {
                 "supported": true,
                 "messageTypes": ["text", "image"]
             }
         },
-        "instructions": "Knowledge engine with 20 tools. PDF extraction: extract_text, extract_structured, get_page_count, search_keywords, extrude_to_server_wiki, extrude_to_agent_payload. Compilation: compile_to_wiki, incremental_compile, recompile_entry, aggregate_entries, check_quality. Indexing: search_knowledge, rebuild_index, get_entry_context, find_orphans, suggest_links, export_concept_map. Reasoning: micro_compile, hypothesis_test."
+        "instructions": "Knowledge engine with 25 tools. PDF extraction: extract_text, extract_structured, get_page_count, search_keywords, extrude_to_server_wiki, extrude_to_agent_payload. Compilation: compile_to_wiki, incremental_compile, recompile_entry, aggregate_entries, check_quality. Indexing: search_knowledge, rebuild_index, get_entry_context, find_orphans, suggest_links, export_concept_map. Reasoning: micro_compile, hypothesis_test. Management: get_config, set_config, get_health_report, trigger_incremental_compile, get_compile_status."
     });
     JsonRpcResponse::success(request.id.clone(), result)
 }
@@ -665,6 +675,85 @@ fn handle_tools_list(request: &JsonRpcRequest) -> JsonRpcResponse {
                 "required": ["knowledge_base", "entry_path"]
             }),
         },
+        // === Management Tools (Phase 1) ===
+        ToolDefinition {
+            name: "get_config".to_string(),
+            description: "Get current runtime configuration for a knowledge base. Returns all key-value pairs from the managed config file.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    }
+                },
+                "required": ["knowledge_base"]
+            }),
+        },
+        ToolDefinition {
+            name: "set_config".to_string(),
+            description: "Set a runtime configuration value for a knowledge base. Persists atomically via write-tmp + rename.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    },
+                    "key": {
+                        "type": "string",
+                        "description": "Configuration key (e.g. 'vlm_api_key', 'extract_mode')"
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "Configuration value"
+                    }
+                },
+                "required": ["knowledge_base", "key", "value"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_health_report".to_string(),
+            description: "Get a comprehensive health report for the knowledge base: entry count, orphan count, contradiction count, index size, graph topology, quality score, and last compile time.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    }
+                },
+                "required": ["knowledge_base"]
+            }),
+        },
+        ToolDefinition {
+            name: "trigger_incremental_compile".to_string(),
+            description: "Manually trigger an incremental compilation of the knowledge base. Scans raw/ for changed PDFs and recompiles only those that need it.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    }
+                },
+                "required": ["knowledge_base"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_compile_status".to_string(),
+            description: "Get the current compile status: whether a compile is running, last start/finish times, duration, outcome, and recent compile history.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "knowledge_base": {
+                        "type": "string",
+                        "description": "Absolute path to the knowledge base directory"
+                    }
+                },
+                "required": ["knowledge_base"]
+            }),
+        },
     ];
 
     JsonRpcResponse::success(request.id.clone(), serde_json::json!({ "tools": tools }))
@@ -713,6 +802,12 @@ async fn handle_tools_call(
         "aggregate_entries" => handle_aggregate_entries(pipeline, &arguments).await,
         "hypothesis_test" => handle_hypothesis_test(pipeline, &arguments).await,
         "recompile_entry" => handle_recompile_entry(pipeline, &arguments).await,
+        // Management tools
+        "get_config" => handle_get_config(&arguments).await,
+        "set_config" => handle_set_config(&arguments).await,
+        "get_health_report" => handle_get_health_report(&arguments).await,
+        "trigger_incremental_compile" => handle_trigger_incremental_compile(pipeline, &arguments).await,
+        "get_compile_status" => handle_get_compile_status(&arguments).await,
         _ => {
             return JsonRpcResponse::error(
                 request.id.clone(),
@@ -1306,4 +1401,164 @@ async fn handle_recompile_entry(
     let result = engine.recompile_entry(std::path::Path::new(entry_path))?;
 
     Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
+}
+
+// === Management Tool Handlers ===
+
+async fn handle_get_config(args: &serde_json::Value) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+    let mut cm = ConfigManager::new(&kb_path);
+    cm.load().map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?;
+
+    let data: std::collections::HashMap<String, String> = cm.all().clone();
+    let result = serde_json::json!({
+        "config": data,
+        "total_keys": data.len(),
+        "config_path": kb_path.join(".rsut_index").join("config.json").to_string_lossy(),
+    });
+    Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
+}
+
+async fn handle_set_config(args: &serde_json::Value) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+    let key = args["key"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing key"))?;
+    let value = args["value"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing value"))?;
+
+    let mut cm = ConfigManager::new(&kb_path);
+    cm.load().map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?;
+    cm.set(key, value).map_err(|e| anyhow::anyhow!("Failed to set config: {}", e))?;
+
+    let result = serde_json::json!({
+        "status": "success",
+        "key": key,
+        "value": value,
+        "message": format!("Configuration '{}' updated successfully.", key),
+    });
+    Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
+}
+
+async fn handle_get_health_report(args: &serde_json::Value) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+    let reporter = HealthReporter::new(&kb_path);
+    let report = reporter.report().map_err(|e| anyhow::anyhow!("Failed to generate report: {}", e))?;
+
+    let result = serde_json::json!({
+        "total_entries": report.total_entries,
+        "orphan_count": report.orphan_count,
+        "contradiction_count": report.contradiction_count,
+        "broken_link_count": report.broken_link_count,
+        "index_size_mb": report.index_size_bytes / 1024 / 1024,
+        "graph_nodes": report.graph_node_count,
+        "graph_edges": report.graph_edge_count,
+        "avg_quality_score": format!("{:.1}%", report.avg_quality_score * 100.0),
+        "domains": report.domains,
+        "last_compile": report.last_compile.map(|t| t.to_rfc3339()),
+        "generated_at": report.generated_at.to_rfc3339(),
+        "report_text": report.to_string(),
+    });
+    Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
+}
+
+async fn handle_trigger_incremental_compile(
+    pipeline: &Arc<McpPdfPipeline>,
+    args: &serde_json::Value,
+) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+    let engine = KnowledgeEngine::new(Arc::clone(pipeline), &kb_path)?;
+    let raw_dir = engine.raw_dir();
+    let result = engine.incremental_compile(&raw_dir).await?;
+
+    // Persist compile status
+    let status_path = kb_path.join(".rsut_index").join("compile_status.json");
+    if let Some(parent) = status_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let status = serde_json::json!({
+        "running": false,
+        "last_finished": chrono::Utc::now().to_rfc3339(),
+        "last_outcome": "success",
+        "last_duration_ms": 0,
+        "entries_compiled": result.compiled,
+        "entries_skipped": result.skipped,
+        "message": format!("Incremental compile: {} compiled, {} skipped", result.compiled, result.skipped),
+    });
+    let _ = std::fs::write(&status_path, serde_json::to_string_pretty(&status).unwrap_or_default());
+
+    Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)])
+}
+
+async fn handle_get_compile_status(args: &serde_json::Value) -> anyhow::Result<Vec<Content>> {
+    let kb_path = parse_kb_path(args)?;
+    let status_path = kb_path.join(".rsut_index").join("compile_status.json");
+
+    if !status_path.exists() {
+        let result = serde_json::json!({
+            "running": false,
+            "last_started": null,
+            "last_finished": null,
+            "last_duration_ms": null,
+            "last_outcome": null,
+            "message": "No compile has been performed yet.",
+            "history": [],
+        });
+        return Ok(vec![Content::text(serde_json::to_string_pretty(&result)?)]);
+    }
+
+    let content = std::fs::read_to_string(&status_path)
+        .map_err(|e| anyhow::anyhow!("Failed to read compile status: {}", e))?;
+    let status: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| anyhow::anyhow!("Failed to parse compile status: {}", e))?;
+
+    Ok(vec![Content::text(serde_json::to_string_pretty(&status)?)])
+}
+
+// === MCP Resources Handlers ===
+
+fn handle_resources_list(request: &JsonRpcRequest) -> JsonRpcResponse {
+    let resources = serde_json::json!({
+        "resources": [
+            {
+                "uri": "ui://dashboard/health",
+                "name": "Knowledge Health Dashboard",
+                "description": "Interactive dashboard showing knowledge base health metrics, domain distribution, and index statistics.",
+                "mimeType": "text/html;profile=mcp-app"
+            }
+        ]
+    });
+    JsonRpcResponse::success(request.id.clone(), resources)
+}
+
+fn handle_resources_read(request: &JsonRpcRequest) -> JsonRpcResponse {
+    let uri = request
+        .params
+        .get("uri")
+        .and_then(|u| u.as_str())
+        .unwrap_or("");
+
+    match uri {
+        "ui://dashboard/health" => {
+            let html = UiAssets::get("dashboard.html")
+                .map(|f| String::from_utf8_lossy(&f.data).into_owned())
+                .unwrap_or_else(|| "<html><body>Dashboard not available</body></html>".to_string());
+
+            let result = serde_json::json!({
+                "contents": [
+                    {
+                        "uri": uri,
+                        "mimeType": "text/html;profile=mcp-app",
+                        "text": html
+                    }
+                ]
+            });
+            JsonRpcResponse::success(request.id.clone(), result)
+        }
+        _ => JsonRpcResponse::error(
+            request.id.clone(),
+            JsonRpcError::invalid_params(&format!("Unknown resource URI: {}", uri)),
+        ),
+    }
 }

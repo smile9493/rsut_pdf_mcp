@@ -27,3 +27,10 @@ pub enum WasmError {
     #[error("Invalid slice: {0}")]
     InvalidSlice(String),
 }
+
+#[cfg(feature = "wasm")]
+impl From<WasmError> for wasm_bindgen::JsValue {
+    fn from(err: WasmError) -> Self {
+        js_sys::Error::new(&err.to_string()).into()
+    }
+}

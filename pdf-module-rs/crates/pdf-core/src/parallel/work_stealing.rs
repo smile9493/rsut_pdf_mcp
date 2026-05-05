@@ -57,7 +57,10 @@ impl AdaptiveScheduler {
     /// Pages are prioritized by estimated processing time (larger page sizes
     /// get higher priority). Higher priority values are processed first.
     pub fn schedule_pages(&self, total_pages: u32, page_sizes: Option<&[f64]>) {
-        let mut tasks = self.global_queue.lock().unwrap();
+        let mut tasks = self
+            .global_queue
+            .lock()
+            .expect("global queue lock poisoned");
         for i in 0..total_pages {
             let priority = if let Some(sizes) = page_sizes {
                 if let Some(&size) = sizes.get(i as usize) {
@@ -86,7 +89,10 @@ impl AdaptiveScheduler {
     pub fn find_task(&self, worker_idx: usize) -> Option<PageTask> {
         // Try the global queue first (pop highest-priority task)
         {
-            let mut tasks = self.global_queue.lock().unwrap();
+            let mut tasks = self
+                .global_queue
+                .lock()
+                .expect("global queue lock poisoned");
             if let Some(task) = tasks.pop() {
                 return Some(task);
             }

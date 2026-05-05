@@ -50,21 +50,24 @@ impl FulltextIndex {
     pub fn open_or_create(knowledge_base: &Path) -> PdfResult<Self> {
         let index_dir = knowledge_base.join(".rsut_index").join("tantivy");
         fs::create_dir_all(&index_dir).map_err(|e| {
-            PdfModuleError::StorageError(format!("Failed to create tantivy index dir: {}", e))
+            PdfModuleError::Storage(format!("Failed to create tantivy index dir: {}", e))
         })?;
 
         let mut schema_builder = SchemaBuilder::default();
 
-        // Text fields use the CJK n-gram tokenizer for Chinese support.
+        // Text fields use the CJK jieba tokenizer for Chinese segmentation support.
         let text_options = TextOptions::default()
-            .set_indexing_options(TextFieldIndexing::default()
-                .set_tokenizer("cjk_ngram")
-                .set_index_option(IndexRecordOption::WithFreqsAndPositions))
+            .set_indexing_options(
+                TextFieldIndexing::default()
+                    .set_tokenizer("cjk")
+                    .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+            )
             .set_stored();
-        let text_options_no_store = TextOptions::default()
-            .set_indexing_options(TextFieldIndexing::default()
-                .set_tokenizer("cjk_ngram")
-                .set_index_option(IndexRecordOption::WithFreqsAndPositions));
+        let text_options_no_store = TextOptions::default().set_indexing_options(
+            TextFieldIndexing::default()
+                .set_tokenizer("cjk")
+                .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+        );
 
         schema_builder.add_text_field(FIELD_PATH, STRING | STORED);
         schema_builder.add_text_field(FIELD_TITLE, text_options.clone());
@@ -77,12 +80,12 @@ impl FulltextIndex {
         let index = if index_dir.join("meta.json").exists() {
             info!(dir = ?index_dir, "Opening existing tantivy index");
             Index::open_in_dir(&index_dir).map_err(|e| {
-                PdfModuleError::StorageError(format!("Failed to open tantivy index: {}", e))
+                PdfModuleError::Storage(format!("Failed to open tantivy index: {}", e))
             })?
         } else {
             info!(dir = ?index_dir, "Creating new tantivy index");
             Index::create_in_dir(&index_dir, schema.clone()).map_err(|e| {
-                PdfModuleError::StorageError(format!("Failed to create tantivy index: {}", e))
+                PdfModuleError::Storage(format!("Failed to create tantivy index: {}", e))
             })?
         };
 
@@ -94,7 +97,7 @@ impl FulltextIndex {
             .reload_policy(ReloadPolicy::OnCommitWithDelay)
             .try_into()
             .map_err(|e| {
-                PdfModuleError::StorageError(format!("Failed to create tantivy reader: {}", e))
+                PdfModuleError::Storage(format!("Failed to create tantivy reader: {}", e))
             })?;
 
         Ok(Self {
@@ -108,19 +111,19 @@ impl FulltextIndex {
     pub fn rebuild(&self, wiki_dir: &Path) -> PdfResult<usize> {
         let schema = self.index.schema();
         let mut writer: IndexWriter = self.index.writer(50_000_000).map_err(|e| {
-            PdfModuleError::StorageError(format!("Failed to create tantivy writer: {}", e))
+            PdfModuleError::Storage(format!("Failed to create tantivy writer: {}", e))
         })?;
 
         // Clear existing documents
         writer.delete_all_documents().map_err(|e| {
-            PdfModuleError::StorageError(format!("Failed to clear tantivy index: {}", e))
+            PdfModuleError::Storage(format!("Failed to clear tantivy index: {}", e))
         })?;
 
         let mut count = 0usize;
         self.scan_and_index(wiki_dir, wiki_dir, &schema, &mut writer, &mut count)?;
 
         writer.commit().map_err(|e| {
-            PdfModuleError::StorageError(format!("Failed to commit tantivy index: {}", e))
+            PdfModuleError::Storage(format!("Failed to commit tantivy index: {}", e))
         })?;
 
         info!(count = count, "Tantivy index rebuilt");
@@ -130,42 +133,38 @@ impl FulltextIndex {
     /// Search the index for a query string.
     pub fn search(&self, query_str: &str, limit: usize) -> PdfResult<Vec<SearchHit>> {
         let schema = self.index.schema();
-        let body_field = schema.get_field(FIELD_BODY).map_err(|e| {
-            PdfModuleError::StorageError(format!("Missing body field: {}", e))
-        })?;
-        let title_field = schema.get_field(FIELD_TITLE).map_err(|e| {
-            PdfModuleError::StorageError(format!("Missing title field: {}", e))
-        })?;
-        let tags_field = schema.get_field(FIELD_TAGS).map_err(|e| {
-            PdfModuleError::StorageError(format!("Missing tags field: {}", e))
-        })?;
-        let path_field = schema.get_field(FIELD_PATH).map_err(|e| {
-            PdfModuleError::StorageError(format!("Missing path field: {}", e))
-        })?;
-        let domain_field = schema.get_field(FIELD_DOMAIN).map_err(|e| {
-            PdfModuleError::StorageError(format!("Missing domain field: {}", e))
-        })?;
+        let body_field = schema
+            .get_field(FIELD_BODY)
+            .map_err(|e| PdfModuleError::Storage(format!("Missing body field: {}", e)))?;
+        let title_field = schema
+            .get_field(FIELD_TITLE)
+            .map_err(|e| PdfModuleError::Storage(format!("Missing title field: {}", e)))?;
+        let tags_field = schema
+            .get_field(FIELD_TAGS)
+            .map_err(|e| PdfModuleError::Storage(format!("Missing tags field: {}", e)))?;
+        let path_field = schema
+            .get_field(FIELD_PATH)
+            .map_err(|e| PdfModuleError::Storage(format!("Missing path field: {}", e)))?;
+        let domain_field = schema
+            .get_field(FIELD_DOMAIN)
+            .map_err(|e| PdfModuleError::Storage(format!("Missing domain field: {}", e)))?;
 
         let searcher = self.reader.searcher();
-        let query_parser = QueryParser::for_index(
-            &self.index,
-            vec![title_field, body_field, tags_field],
-        );
+        let query_parser =
+            QueryParser::for_index(&self.index, vec![title_field, body_field, tags_field]);
         let query = query_parser.parse_query(query_str).map_err(|e| {
-            PdfModuleError::StorageError(format!("Invalid query '{}': {}", query_str, e))
+            PdfModuleError::Storage(format!("Invalid query '{}': {}", query_str, e))
         })?;
 
         let top_docs = searcher
             .search(&query, &TopDocs::with_limit(limit))
-            .map_err(|e| {
-                PdfModuleError::StorageError(format!("Search failed: {}", e))
-            })?;
+            .map_err(|e| PdfModuleError::Storage(format!("Search failed: {}", e)))?;
 
         let mut hits = Vec::new();
         for (score, doc_addr) in top_docs {
-            let doc = searcher.doc::<tantivy::TantivyDocument>(doc_addr).map_err(|e| {
-                PdfModuleError::StorageError(format!("Failed to retrieve doc: {}", e))
-            })?;
+            let doc = searcher
+                .doc::<tantivy::TantivyDocument>(doc_addr)
+                .map_err(|e| PdfModuleError::Storage(format!("Failed to retrieve doc: {}", e)))?;
 
             let path = doc
                 .get_first(path_field)
@@ -195,6 +194,7 @@ impl FulltextIndex {
         Ok(hits)
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn scan_and_index(
         &self,
         base: &Path,
@@ -208,20 +208,16 @@ impl FulltextIndex {
         }
 
         for entry in fs::read_dir(dir)
-            .map_err(|e| PdfModuleError::StorageError(format!("Failed to read dir: {}", e)))?
+            .map_err(|e| PdfModuleError::Storage(format!("Failed to read dir: {}", e)))?
         {
-            let entry = entry.map_err(|e| {
-                PdfModuleError::StorageError(format!("Failed to read entry: {}", e))
-            })?;
+            let entry = entry
+                .map_err(|e| PdfModuleError::Storage(format!("Failed to read entry: {}", e)))?;
             let path = entry.path();
 
             if path.is_dir() {
                 self.scan_and_index(base, &path, schema, writer, count)?;
             } else if path.extension().map(|e| e == "md").unwrap_or(false) {
-                let filename = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("");
+                let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                 // Skip index.md and log.md
                 if filename == "index.md" || filename == "log.md" {
                     continue;
@@ -236,26 +232,13 @@ impl FulltextIndex {
 
                     let (title, domain, tags, body) =
                         if let Some(entry) = KnowledgeEntry::from_markdown(&content) {
-                            let body = content
-                                .split("---")
-                                .nth(2)
-                                .unwrap_or(&content)
-                                .to_string();
-                            (
-                                entry.title,
-                                entry.domain,
-                                entry.tags.join(" "),
-                                body,
-                            )
+                            let body = content.split("---").nth(2).unwrap_or(&content).to_string();
+                            (entry.title, entry.domain, entry.tags.join(" "), body)
                         } else {
                             // Fallback: use filename as title, extract body after front matter
                             let title = filename.replace(".md", "").replace('_', " ");
                             let body = if content.starts_with("---") {
-                                content
-                                    .split("---")
-                                    .nth(2)
-                                    .unwrap_or(&content)
-                                    .to_string()
+                                content.split("---").nth(2).unwrap_or(&content).to_string()
                             } else {
                                 content.clone()
                             };
@@ -277,10 +260,7 @@ impl FulltextIndex {
                             body_field => body.as_str(),
                         ))
                         .map_err(|e| {
-                            PdfModuleError::StorageError(format!(
-                                "Failed to index document: {}",
-                                e
-                            ))
+                            PdfModuleError::Storage(format!("Failed to index document: {}", e))
                         })?;
 
                     *count += 1;
@@ -294,7 +274,9 @@ impl FulltextIndex {
 
     fn extract_snippet(&self, rel_path: &str, query: &str) -> String {
         // Try to find the file and extract a snippet around the query match
-        let wiki_dir = self.index_dir.parent()
+        let wiki_dir = self
+            .index_dir
+            .parent()
             .and_then(|p| p.parent())
             .map(|p| p.join("wiki"))
             .unwrap_or_default();

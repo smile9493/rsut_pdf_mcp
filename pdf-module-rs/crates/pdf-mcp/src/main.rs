@@ -46,6 +46,7 @@ use pdf_core::{McpPdfPipeline, ServerConfig};
 use std::sync::Arc;
 use tracing::info;
 
+mod protocol;
 mod sampling;
 mod server;
 

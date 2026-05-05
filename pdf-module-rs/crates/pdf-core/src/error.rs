@@ -6,6 +6,7 @@ use thiserror::Error;
 /// PDF module error enumeration
 /// Corresponds to Python: PdfModuleError
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum PdfModuleError {
     #[error("File not found: {0}")]
     FileNotFound(String),
@@ -26,29 +27,29 @@ pub enum PdfModuleError {
     CorruptedFile(String),
 
     #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
+    Io(#[from] std::io::Error),
 
     // === MCP Optimization Errors ===
     #[error("Tool registration failed: {0}")]
-    ToolRegistrationError(String),
+    ToolRegistration(String),
 
     #[error("Tool execution failed: {0}")]
-    ToolExecutionError(String),
+    ToolExecution(String),
 
     #[error("Validation failed: {0}")]
-    ValidationFailed(String),
+    Validation(String),
 
     #[error("Storage error: {0}")]
-    StorageError(String),
+    Storage(String),
 
     #[error("Audit error: {0}")]
-    AuditError(String),
+    Audit(String),
 
     #[error("Config error: {0}")]
-    ConfigError(String),
+    Config(String),
 
     #[error("Message send error: {0}")]
-    MessageSendError(String),
+    MessageSend(String),
 
     #[error("Tool not found: {0}")]
     ToolNotFound(String),
@@ -57,10 +58,10 @@ pub enum PdfModuleError {
     InvalidToolDefinition(String),
 
     #[error("Plugin load error: {0}")]
-    PluginLoadError(String),
+    PluginLoad(String),
 
     #[error("JSON error: {0}")]
-    JsonError(#[from] serde_json::Error),
+    Json(#[from] serde_json::Error),
 
     // === Plugin Architecture Errors ===
     #[error("Tool '{0}' is already registered")]
@@ -73,19 +74,37 @@ pub enum PdfModuleError {
     CircuitBreakerOpen(String),
 
     #[error("Schema validation failed: {0}")]
-    SchemaValidationError(String),
+    SchemaValidation(String),
 
     #[error("Tool execution timeout after {0}ms")]
-    ExecutionTimeout(u64),
+    Timeout(u64),
 
-    #[error("Tool '{0}' is unavailable: {1}")]
-    ToolUnavailable(String, String),
+    #[error("Tool unavailable: {0}")]
+    ToolUnavailable(String),
 
     #[error("Discovery failed: {0}")]
-    DiscoveryError(String),
+    Discovery(String),
 
     #[error("Control plane error: {0}")]
-    ControlPlaneError(String),
+    ControlPlane(String),
+
+    #[error("HTTP error: {0}")]
+    Http(String),
+
+    #[error("Database error: {0}")]
+    Database(String),
+
+    #[error("LLM error: {0}")]
+    LLM(String),
+
+    #[error("Missing parameter: {0}")]
+    ParameterMissing(String),
+
+    #[error("Invalid parameter type: {0}")]
+    ParameterType(String),
+
+    #[error("Unknown error: {0}")]
+    Unknown(String),
 }
 
 impl PdfModuleError {
@@ -98,26 +117,32 @@ impl PdfModuleError {
             Self::FileTooLarge(_) => 413,
             Self::CorruptedFile(_) => 422,
             Self::Extraction(_) => 500,
-            Self::IoError(_) => 500,
-            Self::ToolRegistrationError(_) => 500,
-            Self::ToolExecutionError(_) => 500,
-            Self::ValidationFailed(_) => 400,
-            Self::StorageError(_) => 500,
-            Self::AuditError(_) => 500,
-            Self::ConfigError(_) => 500,
-            Self::MessageSendError(_) => 500,
+            Self::Io(_) => 500,
+            Self::ToolRegistration(_) => 500,
+            Self::ToolExecution(_) => 500,
+            Self::Validation(_) => 400,
+            Self::Storage(_) => 500,
+            Self::Audit(_) => 500,
+            Self::Config(_) => 500,
+            Self::MessageSend(_) => 500,
             Self::ToolNotFound(_) => 404,
             Self::InvalidToolDefinition(_) => 400,
-            Self::PluginLoadError(_) => 500,
-            Self::JsonError(_) => 500,
+            Self::PluginLoad(_) => 500,
+            Self::Json(_) => 500,
             Self::ToolAlreadyRegistered(_) => 409,
             Self::RateLimitExceeded(_) => 429,
             Self::CircuitBreakerOpen(_) => 503,
-            Self::SchemaValidationError(_) => 400,
-            Self::ExecutionTimeout(_) => 408,
-            Self::ToolUnavailable(_, _) => 503,
-            Self::DiscoveryError(_) => 500,
-            Self::ControlPlaneError(_) => 500,
+            Self::SchemaValidation(_) => 400,
+            Self::Timeout(_) => 408,
+            Self::ToolUnavailable(_) => 503,
+            Self::Discovery(_) => 500,
+            Self::ControlPlane(_) => 500,
+            Self::Http(_) => 500,
+            Self::Database(_) => 500,
+            Self::LLM(_) => 500,
+            Self::ParameterMissing(_) => 400,
+            Self::ParameterType(_) => 400,
+            Self::Unknown(_) => 500,
         }
     }
 
@@ -130,26 +155,32 @@ impl PdfModuleError {
             Self::Extraction(_) => "ExtractionError",
             Self::AdapterNotFound(_) => "AdapterNotFoundError",
             Self::CorruptedFile(_) => "CorruptedFileError",
-            Self::IoError(_) => "IOError",
-            Self::ToolRegistrationError(_) => "ToolRegistrationError",
-            Self::ToolExecutionError(_) => "ToolExecutionError",
-            Self::ValidationFailed(_) => "ValidationError",
-            Self::StorageError(_) => "StorageError",
-            Self::AuditError(_) => "AuditError",
-            Self::ConfigError(_) => "ConfigError",
-            Self::MessageSendError(_) => "MessageSendError",
+            Self::Io(_) => "IoError",
+            Self::ToolRegistration(_) => "ToolRegistrationError",
+            Self::ToolExecution(_) => "ToolExecutionError",
+            Self::Validation(_) => "ValidationError",
+            Self::Storage(_) => "StorageError",
+            Self::Audit(_) => "AuditError",
+            Self::Config(_) => "ConfigError",
+            Self::MessageSend(_) => "MessageSendError",
             Self::ToolNotFound(_) => "ToolNotFoundError",
             Self::InvalidToolDefinition(_) => "InvalidToolDefinitionError",
-            Self::PluginLoadError(_) => "PluginLoadError",
-            Self::JsonError(_) => "JsonError",
+            Self::PluginLoad(_) => "PluginLoadError",
+            Self::Json(_) => "JsonError",
             Self::ToolAlreadyRegistered(_) => "ToolAlreadyRegisteredError",
             Self::RateLimitExceeded(_) => "RateLimitExceededError",
             Self::CircuitBreakerOpen(_) => "CircuitBreakerOpenError",
-            Self::SchemaValidationError(_) => "SchemaValidationError",
-            Self::ExecutionTimeout(_) => "ExecutionTimeoutError",
-            Self::ToolUnavailable(_, _) => "ToolUnavailableError",
-            Self::DiscoveryError(_) => "DiscoveryError",
-            Self::ControlPlaneError(_) => "ControlPlaneError",
+            Self::SchemaValidation(_) => "SchemaValidationError",
+            Self::Timeout(_) => "TimeoutError",
+            Self::ToolUnavailable(_) => "ToolUnavailableError",
+            Self::Discovery(_) => "DiscoveryError",
+            Self::ControlPlane(_) => "ControlPlaneError",
+            Self::Http(_) => "HttpError",
+            Self::Database(_) => "DatabaseError",
+            Self::LLM(_) => "LLMError",
+            Self::ParameterMissing(_) => "ParameterMissingError",
+            Self::ParameterType(_) => "ParameterTypeError",
+            Self::Unknown(_) => "UnknownError",
         }
     }
 
@@ -180,28 +211,32 @@ impl PdfModuleError {
             Self::Extraction(s) => pdf_common::PdfError::Extraction(s),
             Self::AdapterNotFound(s) => pdf_common::PdfError::AdapterNotFound(s),
             Self::CorruptedFile(s) => pdf_common::PdfError::CorruptedFile(s),
-            Self::IoError(e) => pdf_common::PdfError::Io(e),
-            Self::ToolRegistrationError(s) => pdf_common::PdfError::ToolRegistration(s),
-            Self::ToolExecutionError(s) => pdf_common::PdfError::ToolExecution(s),
-            Self::ValidationFailed(s) => pdf_common::PdfError::Validation(s),
-            Self::StorageError(s) => pdf_common::PdfError::Storage(s),
-            Self::AuditError(s) => pdf_common::PdfError::Audit(s),
-            Self::ConfigError(s) => pdf_common::PdfError::Config(s),
-            Self::MessageSendError(s) => pdf_common::PdfError::MessageSend(s),
+            Self::Io(e) => pdf_common::PdfError::Io(e),
+            Self::ToolRegistration(s) => pdf_common::PdfError::ToolRegistration(s),
+            Self::ToolExecution(s) => pdf_common::PdfError::ToolExecution(s),
+            Self::Validation(s) => pdf_common::PdfError::Validation(s),
+            Self::Storage(s) => pdf_common::PdfError::Storage(s),
+            Self::Audit(s) => pdf_common::PdfError::Audit(s),
+            Self::Config(s) => pdf_common::PdfError::Config(s),
+            Self::MessageSend(s) => pdf_common::PdfError::MessageSend(s),
             Self::ToolNotFound(s) => pdf_common::PdfError::ToolNotFound(s),
             Self::InvalidToolDefinition(s) => pdf_common::PdfError::InvalidToolDefinition(s),
-            Self::PluginLoadError(s) => pdf_common::PdfError::PluginLoad(s),
-            Self::JsonError(e) => pdf_common::PdfError::Json(e),
+            Self::PluginLoad(s) => pdf_common::PdfError::PluginLoad(s),
+            Self::Json(e) => pdf_common::PdfError::Json(e),
             Self::ToolAlreadyRegistered(s) => pdf_common::PdfError::ToolAlreadyRegistered(s),
             Self::RateLimitExceeded(s) => pdf_common::PdfError::RateLimitExceeded(s),
             Self::CircuitBreakerOpen(s) => pdf_common::PdfError::CircuitBreakerOpen(s),
-            Self::SchemaValidationError(s) => pdf_common::PdfError::SchemaValidation(s),
-            Self::ExecutionTimeout(ms) => pdf_common::PdfError::Timeout(ms),
-            Self::ToolUnavailable(a, b) => {
-                pdf_common::PdfError::ToolUnavailable(format!("{}: {}", a, b))
-            }
-            Self::DiscoveryError(s) => pdf_common::PdfError::Discovery(s),
-            Self::ControlPlaneError(s) => pdf_common::PdfError::ControlPlane(s),
+            Self::SchemaValidation(s) => pdf_common::PdfError::SchemaValidation(s),
+            Self::Timeout(ms) => pdf_common::PdfError::Timeout(ms),
+            Self::ToolUnavailable(s) => pdf_common::PdfError::ToolUnavailable(s),
+            Self::Discovery(s) => pdf_common::PdfError::Discovery(s),
+            Self::ControlPlane(s) => pdf_common::PdfError::ControlPlane(s),
+            Self::Http(s) => pdf_common::PdfError::Http(s),
+            Self::Database(s) => pdf_common::PdfError::Database(s),
+            Self::LLM(s) => pdf_common::PdfError::LLM(s),
+            Self::ParameterMissing(s) => pdf_common::PdfError::ParameterMissing(s),
+            Self::ParameterType(s) => pdf_common::PdfError::ParameterType(s),
+            Self::Unknown(s) => pdf_common::PdfError::Extraction(s),
         }
     }
 }
@@ -218,38 +253,39 @@ impl From<pdf_common::PdfError> for PdfModuleError {
             pdf_common::PdfError::CorruptedFile(s) => Self::CorruptedFile(s),
             pdf_common::PdfError::Extraction(s) => Self::Extraction(s),
             pdf_common::PdfError::AdapterNotFound(s) => Self::AdapterNotFound(s),
-            pdf_common::PdfError::ToolRegistration(s) => Self::ToolRegistrationError(s),
-            pdf_common::PdfError::ToolExecution(s) => Self::ToolExecutionError(s),
+            pdf_common::PdfError::ToolRegistration(s) => Self::ToolRegistration(s),
+            pdf_common::PdfError::ToolExecution(s) => Self::ToolExecution(s),
             pdf_common::PdfError::ToolNotFound(s) => Self::ToolNotFound(s),
             pdf_common::PdfError::ToolAlreadyRegistered(s) => Self::ToolAlreadyRegistered(s),
             pdf_common::PdfError::InvalidToolDefinition(s) => Self::InvalidToolDefinition(s),
-            pdf_common::PdfError::PluginLoad(s) => Self::PluginLoadError(s),
-            pdf_common::PdfError::ToolUnavailable(s) => Self::ToolUnavailable(s.clone(), s),
-            pdf_common::PdfError::Discovery(s) => Self::DiscoveryError(s),
+            pdf_common::PdfError::PluginLoad(s) => Self::PluginLoad(s),
+            pdf_common::PdfError::ToolUnavailable(s) => Self::ToolUnavailable(s),
+            pdf_common::PdfError::Discovery(s) => Self::Discovery(s),
             pdf_common::PdfError::RateLimitExceeded(s) => Self::RateLimitExceeded(s),
             pdf_common::PdfError::CircuitBreakerOpen(s) => Self::CircuitBreakerOpen(s),
-            pdf_common::PdfError::Timeout(ms) => Self::ExecutionTimeout(ms),
-            pdf_common::PdfError::MessageSend(s) => Self::MessageSendError(s),
-            pdf_common::PdfError::ControlPlane(s) => Self::ControlPlaneError(s),
-            pdf_common::PdfError::Validation(s) => Self::ValidationFailed(s),
-            pdf_common::PdfError::SchemaValidation(s) => Self::SchemaValidationError(s),
-            pdf_common::PdfError::Config(s) => Self::ConfigError(s),
-            pdf_common::PdfError::Storage(s) => Self::StorageError(s),
-            pdf_common::PdfError::Audit(s) => Self::AuditError(s),
-            pdf_common::PdfError::Http(s) => Self::Extraction(s),
-            pdf_common::PdfError::Database(s) => Self::StorageError(s),
-            pdf_common::PdfError::LLM(s) => Self::Extraction(s),
-            pdf_common::PdfError::ParameterMissing(s) => Self::ValidationFailed(s),
-            pdf_common::PdfError::ParameterType(s) => Self::ValidationFailed(s),
-            pdf_common::PdfError::Io(e) => Self::IoError(e),
-            pdf_common::PdfError::Json(e) => Self::JsonError(e),
+            pdf_common::PdfError::Timeout(ms) => Self::Timeout(ms),
+            pdf_common::PdfError::MessageSend(s) => Self::MessageSend(s),
+            pdf_common::PdfError::ControlPlane(s) => Self::ControlPlane(s),
+            pdf_common::PdfError::Validation(s) => Self::Validation(s),
+            pdf_common::PdfError::SchemaValidation(s) => Self::SchemaValidation(s),
+            pdf_common::PdfError::Config(s) => Self::Config(s),
+            pdf_common::PdfError::Storage(s) => Self::Storage(s),
+            pdf_common::PdfError::Audit(s) => Self::Audit(s),
+            pdf_common::PdfError::Http(s) => Self::Http(s),
+            pdf_common::PdfError::Database(s) => Self::Database(s),
+            pdf_common::PdfError::LLM(s) => Self::LLM(s),
+            pdf_common::PdfError::ParameterMissing(s) => Self::Validation(s),
+            pdf_common::PdfError::ParameterType(s) => Self::Validation(s),
+            pdf_common::PdfError::Io(e) => Self::Io(e),
+            pdf_common::PdfError::Json(e) => Self::Json(e),
+            _ => Self::Unknown(err.to_string()),
         }
     }
 }
 
 impl From<serde_yaml::Error> for PdfModuleError {
     fn from(err: serde_yaml::Error) -> Self {
-        Self::StorageError(format!("YAML error: {}", err))
+        Self::Storage(format!("YAML error: {}", err))
     }
 }
 
@@ -292,5 +328,128 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("/path/to/file.pdf"));
+    }
+
+    #[test]
+    fn test_error_type_naming_consistency() {
+        assert_eq!(
+            PdfModuleError::Io(std::io::Error::other("test")).error_type(),
+            "IoError"
+        );
+        assert_eq!(
+            PdfModuleError::ToolRegistration("test".into()).error_type(),
+            "ToolRegistrationError"
+        );
+        assert_eq!(
+            PdfModuleError::ToolExecution("test".into()).error_type(),
+            "ToolExecutionError"
+        );
+        assert_eq!(
+            PdfModuleError::Storage("test".into()).error_type(),
+            "StorageError"
+        );
+        assert_eq!(
+            PdfModuleError::Audit("test".into()).error_type(),
+            "AuditError"
+        );
+        assert_eq!(
+            PdfModuleError::Config("test".into()).error_type(),
+            "ConfigError"
+        );
+        assert_eq!(
+            PdfModuleError::MessageSend("test".into()).error_type(),
+            "MessageSendError"
+        );
+        assert_eq!(
+            PdfModuleError::PluginLoad("test".into()).error_type(),
+            "PluginLoadError"
+        );
+        assert_eq!(
+            PdfModuleError::Json(serde_json::from_str::<serde_json::Value>("invalid").unwrap_err())
+                .error_type(),
+            "JsonError"
+        );
+        assert_eq!(
+            PdfModuleError::SchemaValidation("test".into()).error_type(),
+            "SchemaValidationError"
+        );
+        assert_eq!(
+            PdfModuleError::Discovery("test".into()).error_type(),
+            "DiscoveryError"
+        );
+        assert_eq!(
+            PdfModuleError::ControlPlane("test".into()).error_type(),
+            "ControlPlaneError"
+        );
+        assert_eq!(
+            PdfModuleError::Http("test".into()).error_type(),
+            "HttpError"
+        );
+        assert_eq!(
+            PdfModuleError::Database("test".into()).error_type(),
+            "DatabaseError"
+        );
+        assert_eq!(PdfModuleError::LLM("test".into()).error_type(), "LLMError");
+        assert_eq!(
+            PdfModuleError::Unknown("test".into()).error_type(),
+            "UnknownError"
+        );
+    }
+
+    #[test]
+    fn test_into_unified_conversion() {
+        let err = PdfModuleError::FileNotFound("test".into());
+        let unified = err.into_unified();
+        assert!(matches!(unified, pdf_common::PdfError::FileNotFound(_)));
+
+        let err = PdfModuleError::Http("test".into());
+        let unified = err.into_unified();
+        assert!(matches!(unified, pdf_common::PdfError::Http(_)));
+
+        let err = PdfModuleError::Database("test".into());
+        let unified = err.into_unified();
+        assert!(matches!(unified, pdf_common::PdfError::Database(_)));
+
+        let err = PdfModuleError::LLM("test".into());
+        let unified = err.into_unified();
+        assert!(matches!(unified, pdf_common::PdfError::LLM(_)));
+
+        let err = PdfModuleError::ToolUnavailable("test".into());
+        let unified = err.into_unified();
+        assert!(matches!(unified, pdf_common::PdfError::ToolUnavailable(_)));
+    }
+
+    #[test]
+    fn test_from_pdf_error_conversion() {
+        let err = pdf_common::PdfError::Http("test".into());
+        let module_err: PdfModuleError = err.into();
+        assert!(matches!(module_err, PdfModuleError::Http(_)));
+
+        let err = pdf_common::PdfError::Database("test".into());
+        let module_err: PdfModuleError = err.into();
+        assert!(matches!(module_err, PdfModuleError::Database(_)));
+
+        let err = pdf_common::PdfError::LLM("test".into());
+        let module_err: PdfModuleError = err.into();
+        assert!(matches!(module_err, PdfModuleError::LLM(_)));
+
+        let err = pdf_common::PdfError::ToolUnavailable("test".into());
+        let module_err: PdfModuleError = err.into();
+        assert!(matches!(module_err, PdfModuleError::ToolUnavailable(_)));
+    }
+
+    #[test]
+    fn test_roundtrip_conversion() {
+        let original = PdfModuleError::Http("HTTP error".into());
+        let unified = original.into_unified();
+        let back: PdfModuleError = unified.into();
+        assert!(matches!(back, PdfModuleError::Http(_)));
+        assert_eq!(back.to_string(), "HTTP error: HTTP error");
+
+        let original = PdfModuleError::ToolUnavailable("tool unavailable".into());
+        let unified = original.into_unified();
+        let back: PdfModuleError = unified.into();
+        assert!(matches!(back, PdfModuleError::ToolUnavailable(_)));
+        assert_eq!(back.to_string(), "Tool unavailable: tool unavailable");
     }
 }

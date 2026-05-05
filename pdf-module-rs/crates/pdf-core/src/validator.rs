@@ -96,7 +96,7 @@ impl FileValidator {
             }
         }
 
-        FileInfo::from_path(file_path).map_err(PdfModuleError::IoError)
+        FileInfo::from_path(file_path).map_err(PdfModuleError::Io)
     }
 
     /// Validate path safety to prevent path traversal attacks

@@ -8,6 +8,7 @@ use thiserror::Error;
 
 /// Error classification for monitoring and alerting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCategory {
     /// File system errors (4xx)
@@ -26,12 +27,15 @@ pub enum ErrorCategory {
     Database,
     /// LLM errors (5xx)
     LLM,
+    /// Control plane errors (rate limiting, circuit breaker, timeout, etc.)
+    ControlPlane,
 }
 
 /// Unified error type for the entire PDF module workspace.
 ///
 /// Replaces the previous `PdfModuleError` (pdf-core) and `EtlError` (pdf-etl).
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum PdfError {
     // === File System Errors ===
     #[error("File not found: {0}")]
@@ -204,7 +208,7 @@ impl PdfError {
             | Self::CircuitBreakerOpen(_)
             | Self::Timeout(_)
             | Self::MessageSend(_)
-            | Self::ControlPlane(_) => ErrorCategory::Validation,
+            | Self::ControlPlane(_) => ErrorCategory::ControlPlane,
 
             Self::Validation(_)
             | Self::SchemaValidation(_)

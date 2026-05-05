@@ -92,10 +92,12 @@ impl WasmSlice {
 /// assert_eq!(wasm_slice.len(), 5);
 /// // Data stays alive as long as `owned` is alive
 /// ```
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
 pub struct OwnedSlice {
     data: Vec<u8>,
 }
 
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
 impl OwnedSlice {
     /// Create an OwnedSlice from a byte vector.
     pub fn from_vec(data: Vec<u8>) -> Self {
@@ -106,11 +108,10 @@ impl OwnedSlice {
     ///
     /// The returned slice is valid for the lifetime of this `OwnedSlice`.
     pub fn as_wasm_slice(&self) -> WasmSlice {
-        WasmSlice {
-            ptr: self.data.as_ptr(),
-            len: self.data.len(),
-            _marker: PhantomData,
-        }
+        // SAFETY: self.data owns the memory and remains alive for the lifetime
+        // of this &self, which outlives the returned WasmSlice.
+        // This routes through WasmSlice::new() to keep the safety contract in one place.
+        unsafe { WasmSlice::new(self.data.as_ptr(), self.data.len()) }
     }
 
     /// Get a reference to the underlying data.
@@ -207,13 +208,19 @@ mod tests {
 
     #[test]
     fn test_no_dangling_ptr() {
-        // Safety test: WasmSlice stays valid as long as OwnedSlice is alive
+        // Verify WasmSlice is valid for the lifetime of OwnedSlice.
+        // After OwnedSlice is dropped, accessing the WasmSlice would be UB,
+        // so we can only test the valid-lifetime case here.
         let owned = OwnedSlice::from_vec(vec![100, 200]);
         let wasm_slice = owned.as_wasm_slice();
+        assert_eq!(wasm_slice.ptr(), owned.as_bytes().as_ptr());
+        assert_eq!(wasm_slice.len(), 2);
         unsafe {
             assert_eq!(wasm_slice.as_slice(), &[100, 200]);
         }
-        // Drop owned after using wasm_slice - would cause UB if we allowed it
+        // Ensure slice remains valid through multiple reads while owned is alive
+        assert_eq!(wasm_slice.len(), 2);
+        assert!(!wasm_slice.is_empty());
         drop(owned);
     }
 }

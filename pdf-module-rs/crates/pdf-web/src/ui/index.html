@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>rsut-pdf-mcp Web Panel</title>
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#3b82f6;--green:#22c55e;--yellow:#eab308;--red:#ef4444;--r:12px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:24px}
+.hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+.hdr h1{font-size:1.5rem;font-weight:600}
+.hdr .sub{font-size:.875rem;color:var(--muted);margin-top:4px}
+.acts{display:flex;gap:8px}
+.btn{padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);cursor:pointer;font-size:.875rem;transition:all .15s}
+.btn:hover{border-color:var(--accent);background:#1e3a5f}
+.btn.primary{background:var(--accent);border-color:var(--accent)}
+.btn.primary:hover{background:#2563eb}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:20px}
+.card .lbl{font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px}
+.card .val{font-size:2rem;font-weight:700;line-height:1}
+.card .dtl{font-size:.8rem;color:var(--muted);margin-top:4px}
+.val.green{color:var(--green)}.val.yellow{color:var(--yellow)}.val.red{color:var(--red)}.val.blue{color:var(--accent)}
+.sec{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:20px;margin-bottom:16px}
+.sec h2{font-size:1rem;font-weight:600;margin-bottom:12px}
+.tags{display:flex;flex-wrap:wrap;gap:8px}
+.tag{padding:4px 12px;background:#1e3a5f;border-radius:9999px;font-size:.8rem;color:var(--accent)}
+.bar{display:flex;align-items:center;gap:8px;padding:12px 16px;background:var(--card);border:1px solid var(--border);border-radius:var(--r);margin-bottom:16px;font-size:.875rem}
+.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.dot.green{background:var(--green)}.dot.yellow{background:var(--yellow)}.dot.red{background:var(--red)}
+.cfg-table{width:100%;border-collapse:collapse;font-size:.875rem}
+.cfg-table th,.cfg-table td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border)}
+.cfg-table th{color:var(--muted);font-weight:500;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em}
+.cfg-table td:first-child{font-family:monospace;color:var(--accent)}
+.frm{display:flex;gap:8px;margin-top:12px}
+.frm input{padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:.875rem;flex:1}
+.frm input:focus{outline:none;border-color:var(--accent)}
+.toast{position:fixed;top:24px;right:24px;padding:12px 20px;border-radius:8px;font-size:.875rem;display:none;z-index:100;animation:fadeIn .2s}
+.toast.ok{background:var(--green);color:#000}.toast.err{background:var(--red);color:#fff}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+.empty{text-align:center;padding:60px 20px;color:var(--muted)}
+.empty h2{font-size:1.25rem;margin-bottom:8px;color:var(--text)}
+.chart-area{display:flex;gap:20px;flex-wrap:wrap}
+.pie-wrap{width:180px;height:180px;flex-shrink:0}
+.pie-wrap svg{width:100%;height:100%}
+.leg{display:flex;flex-direction:column;gap:6px;justify-content:center}
+.leg-item{display:flex;align-items:center;gap:8px;font-size:.8rem}
+.leg-color{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+.tabs{display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--border)}
+.tab{padding:8px 16px;cursor:pointer;font-size:.875rem;color:var(--muted);border-bottom:2px solid transparent;transition:all .15s}
+.tab.active{color:var(--text);border-bottom-color:var(--accent)}
+.tab:hover{color:var(--text)}
+.panel{display:none}.panel.active{display:block}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div>
+    <h1>rsut-pdf-mcp Web Panel</h1>
+    <div class="sub" id="info">Lightweight management interface</div>
+  </div>
+  <div class="acts">
+    <button class="btn" onclick="loadHealth()">Refresh</button>
+    <button class="btn" onclick="loadConfig()">Config</button>
+    <button class="btn primary" onclick="rebuildIndex()">Rebuild Index</button>
+  </div>
+</div>
+
+<div class="bar">
+  <div class="dot green" id="sdot"></div>
+  <span id="stxt">Ready</span>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="health" onclick="switchTab('health')">Health</div>
+  <div class="tab" data-tab="config" onclick="switchTab('config')">Configuration</div>
+  <div class="tab" data-tab="compile" onclick="switchTab('compile')">Compile</div>
+</div>
+
+<!-- Health Panel -->
+<div class="panel active" id="panel-health">
+  <div id="health-content" style="display:none">
+    <div class="grid">
+      <div class="card"><div class="lbl">Total Entries</div><div class="val blue" id="m-total">--</div></div>
+      <div class="card"><div class="lbl">Orphan Entries</div><div class="val yellow" id="m-orphan">--</div></div>
+      <div class="card"><div class="lbl">Contradictions</div><div class="val red" id="m-contrad">--</div></div>
+      <div class="card"><div class="lbl">Broken Links</div><div class="val yellow" id="m-broken">--</div></div>
+      <div class="card"><div class="lbl">Index Size</div><div class="val" id="m-idxsize">--</div></div>
+      <div class="card"><div class="lbl">Avg Quality</div><div class="val green" id="m-quality">--</div></div>
+      <div class="card"><div class="lbl">Graph</div><div class="val" id="m-nodes">--</div><div class="dtl" id="m-edges">-- edges</div></div>
+      <div class="card"><div class="lbl">Last Compile</div><div class="val" style="font-size:1rem" id="m-lastcompile">--</div></div>
+    </div>
+    <div class="sec"><h2>Domains</h2><div class="tags" id="domains"></div></div>
+    <div class="sec"><h2>Domain Distribution</h2>
+      <div class="chart-area"><div class="pie-wrap" id="pie"></div><div class="leg" id="leg"></div></div>
+    </div>
+    <div class="sec"><h2>Report</h2><pre id="report-text" style="font-size:.8rem;color:var(--muted);white-space:pre-wrap"></pre></div>
+  </div>
+  <div class="empty" id="health-empty">
+    <h2>Click Refresh to load data</h2>
+    <p>Health metrics will appear here.</p>
+  </div>
+</div>
+
+<!-- Config Panel -->
+<div class="panel" id="panel-config">
+  <div class="sec">
+    <h2>Runtime Configuration</h2>
+    <table class="cfg-table">
+      <thead><tr><th>Key</th><th>Value</th><th>Actions</th></tr></thead>
+      <tbody id="cfg-body"><tr><td colspan="3" style="color:var(--muted)">Loading...</td></tr></tbody>
+    </table>
+    <div class="frm">
+      <input id="cfg-key" placeholder="Key (e.g. vlm_api_key)">
+      <input id="cfg-val" placeholder="Value">
+      <button class="btn primary" onclick="setConfig()">Set</button>
+    </div>
+  </div>
+</div>
+
+<!-- Compile Panel -->
+<div class="panel" id="panel-compile">
+  <div class="sec">
+    <h2>Compile Status</h2>
+    <div id="compile-status"><p style="color:var(--muted)">Click to load compile status.</p></div>
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <button class="btn" onclick="loadCompileStatus()">Check Status</button>
+      <button class="btn primary" onclick="triggerCompile()">Trigger Incremental Compile</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';
+function toast(msg, ok) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + (ok ? 'ok' : 'err');
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3000);
+}
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
+  if (name === 'config') loadConfig();
+  if (name === 'compile') loadCompileStatus();
+}
+async function loadHealth() {
+  document.getElementById('stxt').textContent = 'Loading...';
+  try {
+    const r = await fetch(API + '/api/health');
+    const d = await r.json();
+    document.getElementById('health-empty').style.display = 'none';
+    document.getElementById('health-content').style.display = 'block';
+    document.getElementById('sdot').className = 'dot green';
+    document.getElementById('stxt').textContent = 'Connected';
+    document.getElementById('m-total').textContent = d.total_entries ?? '--';
+    document.getElementById('m-orphan').textContent = d.orphan_count ?? '--';
+    document.getElementById('m-contrad').textContent = d.contradiction_count ?? '--';
+    document.getElementById('m-broken').textContent = d.broken_link_count ?? '--';
+    document.getElementById('m-idxsize').textContent = (d.index_size_mb ?? '--') + ' MB';
+    document.getElementById('m-quality').textContent = d.avg_quality_score ?? '--';
+    document.getElementById('m-nodes').textContent = d.graph_nodes ?? '--';
+    document.getElementById('m-edges').textContent = (d.graph_edges ?? '--') + ' edges';
+    document.getElementById('m-lastcompile').textContent = d.last_compile ? new Date(d.last_compile).toLocaleString() : 'Never';
+    document.getElementById('report-text').textContent = d.report_text || '';
+    const domains = d.domains || [];
+    const dl = document.getElementById('domains');
+    dl.innerHTML = '';
+    domains.forEach(x => { const s = document.createElement('span'); s.className = 'tag'; s.textContent = x; dl.appendChild(s); });
+    renderPie(domains);
+  } catch(e) {
+    document.getElementById('sdot').className = 'dot red';
+    document.getElementById('stxt').textContent = 'Error: ' + e.message;
+    toast('Failed to load health data', false);
+  }
+}
+function renderPie(domains) {
+  const area = document.getElementById('pie');
+  const leg = document.getElementById('leg');
+  area.innerHTML = ''; leg.innerHTML = '';
+  if (!domains.length) { area.innerHTML = '<svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15.9" fill="none" stroke="#334155" stroke-width="3"/></svg>'; return; }
+  const colors = ['#3b82f6','#22c55e','#eab308','#ef4444','#a855f7','#ec4899','#14b8a6','#f97316','#6366f1','#84cc16'];
+  let off = 0, svg = '';
+  domains.forEach((d, i) => {
+    const pct = (1/domains.length)*100, c = colors[i%colors.length];
+    svg += '<circle cx="18" cy="18" r="15.9" fill="none" stroke="'+c+'" stroke-width="3" stroke-dasharray="'+pct+' '+(100-pct)+'" stroke-dashoffset="-'+off+'" transform="rotate(-90 18 18)"/>';
+    off += pct;
+    const item = document.createElement('div'); item.className = 'leg-item';
+    item.innerHTML = '<div class="leg-color" style="background:'+c+'"></div><span>'+d+'</span>';
+    leg.appendChild(item);
+  });
+  area.innerHTML = '<svg viewBox="0 0 36 36">'+svg+'</svg>';
+}
+async function loadConfig() {
+  try {
+    const r = await fetch(API + '/api/config');
+    const d = await r.json();
+    const body = document.getElementById('cfg-body');
+    const entries = Object.entries(d.config || {});
+    if (!entries.length) { body.innerHTML = '<tr><td colspan="3" style="color:var(--muted)">No configuration entries</td></tr>'; return; }
+    entries.sort((a,b) => a[0].localeCompare(b[0]));
+    body.innerHTML = entries.map(([k,v]) =>
+      '<tr><td>'+k+'</td><td>'+v+'</td><td><button class="btn" style="padding:4px 8px;font-size:.75rem" onclick="removeConfig(\''+k+'\')">Remove</button></td></tr>'
+    ).join('');
+  } catch(e) { toast('Failed to load config', false); }
+}
+async function setConfig() {
+  const key = document.getElementById('cfg-key').value.trim();
+  const val = document.getElementById('cfg-val').value.trim();
+  if (!key) return toast('Key required', false);
+  try {
+    await fetch(API + '/api/config', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({key, value: val}) });
+    toast('Config set: ' + key, true);
+    document.getElementById('cfg-key').value = '';
+    document.getElementById('cfg-val').value = '';
+    loadConfig();
+  } catch(e) { toast('Failed to set config', false); }
+}
+async function removeConfig(key) {
+  try {
+    await fetch(API + '/api/config/' + encodeURIComponent(key), { method: 'DELETE' });
+    toast('Removed: ' + key, true);
+    loadConfig();
+  } catch(e) { toast('Failed to remove config', false); }
+}
+async function loadCompileStatus() {
+  try {
+    const r = await fetch(API + '/api/compile/status');
+    const d = await r.json();
+    const el = document.getElementById('compile-status');
+    el.innerHTML = '<table class="cfg-table"><tbody>' +
+      '<tr><td>Running</td><td>'+(d.running ? 'Yes' : 'No')+'</td></tr>' +
+      '<tr><td>Last Finished</td><td>'+(d.last_finished ? new Date(d.last_finished).toLocaleString() : 'Never')+'</td></tr>' +
+      '<tr><td>Outcome</td><td>'+(d.last_outcome || 'n/a')+'</td></tr>' +
+      '<tr><td>Duration</td><td>'+(d.last_duration_ms ? d.last_duration_ms+' ms' : 'n/a')+'</td></tr>' +
+      '<tr><td>Message</td><td>'+(d.message || '')+'</td></tr>' +
+      '</tbody></table>';
+  } catch(e) { toast('Failed to load compile status', false); }
+}
+async function triggerCompile() {
+  document.getElementById('stxt').textContent = 'Compiling...';
+  try {
+    const r = await fetch(API + '/api/compile', { method: 'POST' });
+    const d = await r.json();
+    toast('Compile: ' + (d.message || 'done'), true);
+    document.getElementById('stxt').textContent = 'Ready';
+    loadCompileStatus();
+    loadHealth();
+  } catch(e) { document.getElementById('stxt').textContent = 'Ready'; toast('Compile failed', false); }
+}
+async function rebuildIndex() {
+  document.getElementById('stxt').textContent = 'Rebuilding...';
+  try {
+    const r = await fetch(API + '/api/index/rebuild', { method: 'POST' });
+    const d = await r.json();
+    toast('Index rebuilt: ' + (d.fulltext_entries_indexed||0) + ' entries', true);
+    document.getElementById('stxt').textContent = 'Ready';
+    loadHealth();
+  } catch(e) { document.getElementById('stxt').textContent = 'Ready'; toast('Rebuild failed', false); }
+}
+loadHealth();
+</script>
+</body>
+</html>

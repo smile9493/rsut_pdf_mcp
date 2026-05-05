@@ -217,19 +217,17 @@ RUST_LOG={}
 
     fn check_mcp_server(&self) -> Option<u32> {
         // MCP Server: 匹配 pdf-mcp 但排除 pdf-dashboard 和临时进程
-        let output = Command::new("ps")
-            .args(["aux"])
-            .output()
-            .ok()?;
+        let output = Command::new("ps").args(["aux"]).output().ok()?;
 
         let output_str = String::from_utf8_lossy(&output.stdout);
-        
+
         for line in output_str.lines() {
-            if line.contains("/opt/pdf-module/pdf-mcp") 
+            if line.contains("/opt/pdf-module/pdf-mcp")
                 && !line.contains("pdf-dashboard")
                 && !line.contains("--version")
                 && !line.contains("--help")
-                && !line.contains("dashboard") {
+                && !line.contains("dashboard")
+            {
                 // 提取PID（第二列）
                 let parts: Vec<&str> = line.split_whitespace().collect();
                 if parts.len() > 1 {
@@ -249,19 +247,14 @@ RUST_LOG={}
 
     fn check_web_frontend(&self) -> Option<u32> {
         // Web Frontend: 精确匹配 /opt/pdf-module/web 目录下的 serve 进程
-        let output = Command::new("ps")
-            .args(["aux"])
-            .output()
-            .ok()?;
+        let output = Command::new("ps").args(["aux"]).output().ok()?;
 
         let output_str = String::from_utf8_lossy(&output.stdout);
         let web_dir = format!("{}/web", self.install_dir);
-        
+
         for line in output_str.lines() {
             // 精确匹配：必须在安装目录的 web 目录下运行 serve
-            if line.contains(&web_dir) 
-                && line.contains("serve") 
-                && line.contains("8080") {
+            if line.contains(&web_dir) && line.contains("serve") && line.contains("8080") {
                 let parts: Vec<&str> = line.split_whitespace().collect();
                 if parts.len() > 1 {
                     if let Ok(pid) = parts[1].parse::<u32>() {
@@ -462,7 +455,11 @@ RUST_LOG={}
 
         // Web Frontend
         if let Some(pid) = self.check_web_frontend() {
-            println!("    {} Web 前端运行中 (PID: {}, 端口: 8080)", "✓".green(), pid);
+            println!(
+                "    {} Web 前端运行中 (PID: {}, 端口: 8080)",
+                "✓".green(),
+                pid
+            );
         } else if self.check_port(8080) {
             println!("    {} Web 前端运行中 (端口: 8080)", "✓".green());
         } else {
@@ -645,11 +642,9 @@ RUST_LOG={}
 
         print!("  {} 停止 Dashboard API...", "→".blue());
         if let Some(pid) = self.check_dashboard() {
-            let _ = Command::new("kill")
-                .args([&pid.to_string()])
-                .status();
+            let _ = Command::new("kill").args([&pid.to_string()]).status();
             std::thread::sleep(std::time::Duration::from_millis(500));
-            
+
             if self.check_dashboard().is_none() {
                 println!(" {}", "✓".green());
             } else {
@@ -661,11 +656,9 @@ RUST_LOG={}
 
         print!("  {} 停止 Web 前端...", "→".blue());
         if let Some(pid) = self.check_web_frontend() {
-            let _ = Command::new("kill")
-                .args([&pid.to_string()])
-                .status();
+            let _ = Command::new("kill").args([&pid.to_string()]).status();
             std::thread::sleep(std::time::Duration::from_millis(500));
-            
+
             if self.check_web_frontend().is_none() && !self.check_port(8080) {
                 println!(" {}", "✓".green());
             } else {
@@ -692,14 +685,19 @@ RUST_LOG={}
         println!("\n{}", ">>> 下载 Web 前端".cyan().bold());
 
         let web_dist = format!("{}/web/dist", self.install_dir);
-        
+
         if Path::new(&web_dist).exists() {
             println!("  {} Web 前端已存在", "ℹ".blue());
             print!("  {} 是否重新下载? (y/N): ", "?".yellow());
             use std::io::{self, BufRead};
             let stdin = io::stdin();
-            let input = stdin.lock().lines().next().unwrap_or(Ok(String::new())).unwrap_or_default();
-            
+            let input = stdin
+                .lock()
+                .lines()
+                .next()
+                .unwrap_or(Ok(String::new()))
+                .unwrap_or_default();
+
             if !input.to_lowercase().starts_with('y') {
                 println!("  {} 已取消", "ℹ".blue());
                 return;
@@ -709,16 +707,25 @@ RUST_LOG={}
         let version = version.unwrap_or_else(|| {
             print!("  {} 获取最新版本...", "→".blue());
             let output = Command::new("curl")
-                .args(["-s", "https://api.github.com/repos/smile9493/rsut_pdf_mcp/releases/latest"])
+                .args([
+                    "-s",
+                    "https://api.github.com/repos/smile9493/rsut_pdf_mcp/releases/latest",
+                ])
                 .output();
-            
+
             match output {
                 Ok(output) => {
                     let response = String::from_utf8_lossy(&output.stdout);
                     for line in response.lines() {
                         if line.contains("\"tag_name\":") {
-                            let version = line.split(':').nth(1).unwrap_or("\"v0.1.3\"")
-                                .trim().trim_matches(',').trim_matches('"').to_string();
+                            let version = line
+                                .split(':')
+                                .nth(1)
+                                .unwrap_or("\"v0.1.3\"")
+                                .trim()
+                                .trim_matches(',')
+                                .trim_matches('"')
+                                .to_string();
                             println!(" {}", version.green());
                             return version;
                         }
@@ -736,7 +743,7 @@ RUST_LOG={}
         );
 
         print!("  {} 下载 Web 前端...", "→".blue());
-        
+
         let web_dir = format!("{}/web", self.install_dir);
         let temp_file = format!("{}/web-dist.tar.gz", web_dir);
 
@@ -749,9 +756,9 @@ RUST_LOG={}
         match result {
             Ok(status) if status.success() => {
                 println!(" {}", "✓".green());
-                
+
                 print!("  {} 解压文件...", "→".blue());
-                
+
                 // 清理旧的dist目录
                 if Path::new(&web_dist).exists() {
                     fs::remove_dir_all(&web_dist).ok();
@@ -764,10 +771,10 @@ RUST_LOG={}
                 match extract_result {
                     Ok(status) if status.success() => {
                         println!(" {}", "✓".green());
-                        
+
                         // 清理临时文件
                         fs::remove_file(&temp_file).ok();
-                        
+
                         println!("\n  {} Web 前端下载完成！", "✓".green());
                         println!("  {} 版本: {}", "→".blue(), version);
                         println!("  {} 位置: {}", "→".blue(), web_dist);

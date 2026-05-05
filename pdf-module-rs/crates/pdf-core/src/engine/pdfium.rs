@@ -1,9 +1,9 @@
 use async_trait::async_trait;
-use once_cell::sync::Lazy;
 use std::env;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::LazyLock;
 
 use crate::dto::{
     ExtractOptions, FileInfo, PageMetadata, StructuredExtractionResult, TextExtractionResult,
@@ -20,7 +20,7 @@ struct StructuredParts {
     pages: Vec<PageMetadata>,
 }
 
-static PDFIUM: Lazy<Option<Arc<pdfium_render::prelude::Pdfium>>> = Lazy::new(|| {
+static PDFIUM: LazyLock<Option<Arc<pdfium_render::prelude::Pdfium>>> = LazyLock::new(|| {
     if let Ok(path) = env::var("PDFIUM_LIB_PATH") {
         if Path::new(&path).exists() {
             if let Ok(bindings) = pdfium_render::prelude::Pdfium::bind_to_library(&path) {

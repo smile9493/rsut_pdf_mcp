@@ -3,12 +3,13 @@
 //! Detects common issues in the wiki: missing tags, orphan entries,
 //! broken links, contradictions, and style drift.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::error::{PdfModuleError, PdfResult};
 use crate::knowledge::entry::KnowledgeEntry;
+use crate::knowledge::index::vector::{cosine_similarity, TfidfModel, EmbeddingModel};
 
 /// Severity level for quality issues.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -38,8 +39,29 @@ pub struct QualityIssue {
 
 impl std::fmt::Display for QualityIssue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}] {}: {}", self.severity, self.entry_path, self.message)
+        write!(
+            f,
+            "[{}] {}: {}",
+            self.severity, self.entry_path, self.message
+        )
     }
+}
+
+/// A pair of entries that may have style or cognitive drift.
+///
+/// Detected when entries under the same tag have low cosine similarity
+/// despite covering related topics, suggesting divergent writing styles
+/// or conceptual evolution over time.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DriftPair {
+    pub entry_a: String,
+    pub entry_b: String,
+    pub title_a: String,
+    pub title_b: String,
+    /// Cosine similarity of their TF-IDF vectors (lower = more drift).
+    pub similarity: f32,
+    /// The shared tag that connects them.
+    pub shared_tag: String,
 }
 
 /// Comprehensive quality report for the wiki.
@@ -57,6 +79,8 @@ pub struct QualityReport {
     pub domains: HashSet<String>,
     /// Average quality score across entries with score > 0.
     pub avg_quality_score: f32,
+    /// Pairs of entries with potential style/cognitive drift.
+    pub drift_pairs: Vec<DriftPair>,
 }
 
 impl QualityReport {
@@ -121,6 +145,20 @@ impl QualityReport {
             md.push_str("These paths are referenced but do not exist:\n\n");
             for path in &self.broken_links {
                 md.push_str(&format!("- `{}`\n", path));
+            }
+            md.push('\n');
+        }
+
+        if !self.drift_pairs.is_empty() {
+            md.push_str("## Style Drift Detection\n\n");
+            md.push_str("These entry pairs share a tag but have low content similarity (possible style/cognitive drift):\n\n");
+            md.push_str("| Entry A | Entry B | Shared Tag | Similarity |\n");
+            md.push_str("|---------|---------|------------|------------|\n");
+            for pair in &self.drift_pairs {
+                md.push_str(&format!(
+                    "| {} | {} | `{}` | {:.2} |\n",
+                    pair.title_a, pair.title_b, pair.shared_tag, pair.similarity
+                ));
             }
             md.push('\n');
         }
@@ -218,8 +256,7 @@ pub fn analyze_wiki(wiki_dir: &Path) -> PdfResult<QualityReport> {
         .iter()
         .filter(|(_, entry)| {
             let rel = entry.relative_path().to_string_lossy().to_string();
-            !linked_entries.contains(&rel)
-                && entry.level != crate::knowledge::entry::EntryLevel::L0
+            !linked_entries.contains(&rel) && entry.level != crate::knowledge::entry::EntryLevel::L0
         })
         .map(|(path, _)| {
             path.strip_prefix(wiki_dir)
@@ -248,6 +285,7 @@ pub fn analyze_wiki(wiki_dir: &Path) -> PdfResult<QualityReport> {
         broken_links,
         domains,
         avg_quality_score,
+        drift_pairs: detect_drift(wiki_dir, &entries),
     })
 }
 
@@ -261,11 +299,10 @@ fn scan_entries_recursive(
         return Ok(());
     }
     for entry in fs::read_dir(dir)
-        .map_err(|e| PdfModuleError::StorageError(format!("Failed to read dir: {}", e)))?
+        .map_err(|e| PdfModuleError::Storage(format!("Failed to read dir: {}", e)))?
     {
-        let entry = entry.map_err(|e| {
-            PdfModuleError::StorageError(format!("Failed to read entry: {}", e))
-        })?;
+        let entry =
+            entry.map_err(|e| PdfModuleError::Storage(format!("Failed to read entry: {}", e)))?;
         let path = entry.path();
         if path.is_dir() {
             scan_entries_recursive(base, &path, entries, all_paths)?;
@@ -284,4 +321,115 @@ fn scan_entries_recursive(
         }
     }
     Ok(())
+}
+
+/// Detect style/cognitive drift between entries that share tags.
+///
+/// For each tag with >= 2 entries, computes pairwise TF-IDF cosine similarity.
+/// Pairs with similarity below `threshold` are flagged as potential drift.
+///
+/// Uses a simplified TF-IDF model with 256-dimensional feature hashing,
+/// trained on the corpus of all entry titles and bodies.
+const DRIFT_THRESHOLD: f32 = 0.6;
+
+fn detect_drift(
+    wiki_dir: &Path,
+    entries: &[(PathBuf, KnowledgeEntry)],
+) -> Vec<DriftPair> {
+    if entries.len() < 2 {
+        return Vec::new();
+    }
+
+    // Build corpus for TF-IDF training
+    let corpus: Vec<String> = entries
+        .iter()
+        .map(|(path, entry)| {
+            let body = fs::read_to_string(path).unwrap_or_default();
+            let body_text = body.split("---").nth(2).unwrap_or("").to_string();
+            format!("{} {}", entry.title, body_text)
+        })
+        .collect();
+
+    let mut model = TfidfModel::new(256);
+    model.train(&corpus);
+
+    // Embed each entry
+    let embeddings: Vec<Vec<f32>> = corpus.iter().map(|doc| model.embed(doc)).collect();
+
+    // Build tag → entry indices mapping
+    let mut tag_entries: HashMap<String, Vec<usize>> = HashMap::new();
+    for (idx, (_, entry)) in entries.iter().enumerate() {
+        for tag in &entry.tags {
+            tag_entries.entry(tag.clone()).or_default().push(idx);
+        }
+    }
+
+    let mut drift_pairs = Vec::new();
+    let mut seen_pairs = HashSet::new();
+
+    for (tag, indices) in &tag_entries {
+        if indices.len() < 2 {
+            continue;
+        }
+        // Only check entries with large time spans (> 90 days)
+        for i in 0..indices.len() {
+            for j in (i + 1)..indices.len() {
+                let idx_a = indices[i];
+                let idx_b = indices[j];
+                let (_, entry_a) = &entries[idx_a];
+                let (_, entry_b) = &entries[idx_b];
+
+                let time_span = (entry_b.created - entry_a.created).num_days().unsigned_abs();
+                if time_span < 90 {
+                    continue;
+                }
+
+                let pair_key = {
+                    let mut key = vec![
+                        entries[idx_a].0.to_string_lossy().to_string(),
+                        entries[idx_b].0.to_string_lossy().to_string(),
+                    ];
+                    key.sort();
+                    key.join("↔")
+                };
+                if !seen_pairs.insert(pair_key) {
+                    continue;
+                }
+
+                let sim = cosine_similarity(&embeddings[idx_a], &embeddings[idx_b]);
+                if sim < DRIFT_THRESHOLD {
+                    let rel_a = entries[idx_a]
+                        .0
+                        .strip_prefix(wiki_dir)
+                        .unwrap_or(&entries[idx_a].0)
+                        .to_string_lossy()
+                        .to_string();
+                    let rel_b = entries[idx_b]
+                        .0
+                        .strip_prefix(wiki_dir)
+                        .unwrap_or(&entries[idx_b].0)
+                        .to_string_lossy()
+                        .to_string();
+
+                    drift_pairs.push(DriftPair {
+                        entry_a: rel_a,
+                        entry_b: rel_b,
+                        title_a: entry_a.title.clone(),
+                        title_b: entry_b.title.clone(),
+                        similarity: sim,
+                        shared_tag: tag.clone(),
+                    });
+                }
+            }
+        }
+    }
+
+    // Sort by similarity ascending (worst drift first)
+    drift_pairs.sort_by(|a, b| {
+        a.similarity
+            .partial_cmp(&b.similarity)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    drift_pairs
 }

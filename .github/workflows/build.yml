@@ -58,6 +58,13 @@ jobs:
           rm -rf ~/.cargo/advisory-db
           rm -rf ~/.cargo/git/checkouts/advisory-db
 
+      - name: Download PDFium
+        run: |
+          curl -L -o pdfium.tgz "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7825/pdfium-linux-x64.tgz"
+          tar -xzf pdfium.tgz
+          echo "PDFIUM_LIB_PATH=$GITHUB_WORKSPACE/lib/libpdfium.so" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$GITHUB_WORKSPACE/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
       - name: Run tests (pdf-module-rs)
         run: |
           cd pdf-module-rs
@@ -126,13 +133,20 @@ jobs:
       - name: Install cargo-llvm-cov
         run: cargo install cargo-llvm-cov
 
+      - name: Download PDFium
+        run: |
+          curl -L -o pdfium.tgz "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7825/pdfium-linux-x64.tgz"
+          tar -xzf pdfium.tgz
+          echo "PDFIUM_LIB_PATH=$GITHUB_WORKSPACE/lib/libpdfium.so" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$GITHUB_WORKSPACE/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
       - name: Generate coverage
         run: |
           cd pdf-module-rs
           cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           files: lcov.info
           fail_ci_if_error: false
@@ -234,7 +248,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y musl-tools libssl-dev
-          rustup target add x86_64-unknown-linux-musl
 
       - name: Install OpenSSL (Linux x64)
         if: matrix.target == 'x86_64-unknown-linux-gnu'
@@ -264,6 +277,48 @@ jobs:
           echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
           echo "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++" >> $GITHUB_ENV
           echo "STRIP_CMD=aarch64-linux-gnu-strip" >> $GITHUB_ENV
+
+      - name: Download PDFium (Linux x64)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          curl -L -o pdfium.tgz "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7825/pdfium-linux-x64.tgz"
+          tar -xzf pdfium.tgz
+          echo "PDFIUM_LIB_PATH=$GITHUB_WORKSPACE/lib/libpdfium.so" >> $GITHUB_ENV
+
+      - name: Download PDFium (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          curl -L -o pdfium.tgz "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7825/pdfium-linux-arm64.tgz"
+          tar -xzf pdfium.tgz
+          echo "PDFIUM_LIB_PATH=$GITHUB_WORKSPACE/lib/libpdfium.so" >> $GITHUB_ENV
+
+      - name: Download PDFium (Linux musl x64)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: |
+          curl -L -o pdfium.tgz "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7825/pdfium-linux-musl-x64.tgz"
+          tar -xzf pdfium.tgz
+          echo "PDFIUM_LIB_PATH=$GITHUB_WORKSPACE/lib/libpdfium.so" >> $GITHUB_ENV
+
+      - name: Download PDFium (macOS x64)
+        if: matrix.target == 'x86_64-apple-darwin'
+        run: |
+          curl -L -o pdfium.tgz "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7825/pdfium-mac-x64.tgz"
+          tar -xzf pdfium.tgz
+          echo "PDFIUM_LIB_PATH=$GITHUB_WORKSPACE/lib/libpdfium.dylib" >> $GITHUB_ENV
+
+      - name: Download PDFium (macOS ARM64)
+        if: matrix.target == 'aarch64-apple-darwin'
+        run: |
+          curl -L -o pdfium.tgz "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7825/pdfium-mac-arm64.tgz"
+          tar -xzf pdfium.tgz
+          echo "PDFIUM_LIB_PATH=$GITHUB_WORKSPACE/lib/libpdfium.dylib" >> $GITHUB_ENV
+
+      - name: Download PDFium (Windows x64)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        run: |
+          curl -L -o pdfium.tgz "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7825/pdfium-win-x64.tgz"
+          tar -xzf pdfium.tgz
+          echo "PDFIUM_LIB_PATH=$GITHUB_WORKSPACE/lib/pdfium.dll" >> $GITHUB_ENV
 
       - name: Build MCP Server
         run: |

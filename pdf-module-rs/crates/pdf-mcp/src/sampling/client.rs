@@ -12,8 +12,10 @@ use tracing::debug;
 
 pub use super::SamplingError;
 
-type PendingRequests = Arc<RwLock<HashMap<u64, oneshot::Sender<Result<SamplingResponse, SamplingError>>>>>;
+type PendingRequests =
+    Arc<RwLock<HashMap<u64, oneshot::Sender<Result<SamplingResponse, SamplingError>>>>>;
 
+#[allow(dead_code)]
 pub struct SamplingClient {
     request_tx: mpsc::Sender<OutgoingRequest>,
     pending: PendingRequests,
@@ -26,6 +28,7 @@ pub struct OutgoingRequest {
     pub request: SamplingRequest,
 }
 
+#[allow(dead_code)]
 impl SamplingClient {
     pub fn new(timeout_secs: u64) -> Self {
         let (request_tx, _request_rx) = mpsc::channel::<OutgoingRequest>(100);
@@ -114,20 +117,23 @@ pub fn create_sampling_jsonrpc_request(id: u64, request: SamplingRequest) -> ser
     })
 }
 
-pub fn parse_sampling_response(value: &serde_json::Value) -> Result<(u64, Result<SamplingResponse, SamplingError>), String> {
-    let id = value.get("id")
+pub fn parse_sampling_response(
+    value: &serde_json::Value,
+) -> Result<(u64, Result<SamplingResponse, SamplingError>), String> {
+    let id = value
+        .get("id")
         .and_then(|v| v.as_u64())
         .ok_or("Missing or invalid id in response")?;
 
     if let Some(error) = value.get("error") {
-        let message = error.get("message")
+        let message = error
+            .get("message")
             .and_then(|v| v.as_str())
             .unwrap_or("Unknown error");
         return Ok((id, Err(SamplingError::Internal(message.to_string()))));
     }
 
-    let result = value.get("result")
-        .ok_or("Missing result in response")?;
+    let result = value.get("result").ok_or("Missing result in response")?;
 
     let response: SamplingResponse = serde_json::from_value(result.clone())
         .map_err(|e| format!("Failed to parse SamplingResponse: {}", e))?;
@@ -136,6 +142,7 @@ pub fn parse_sampling_response(value: &serde_json::Value) -> Result<(u64, Result
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct SamplingClientConfig {
     pub timeout_secs: u64,
     pub max_concurrent: usize,
@@ -222,7 +229,7 @@ mod tests {
         let handle = tokio::spawn(async move {
             let client = SamplingClient::new(5);
             let pending_clone = client.pending_requests();
-            
+
             {
                 let mut p = pending_clone.write().await;
                 p.insert(1, tokio::sync::oneshot::channel().0);
@@ -240,9 +247,8 @@ mod tests {
         };
 
         let client_clone = SamplingClient::with_sender(5, tx);
-        let request_handle = tokio::spawn(async move {
-            client_clone.request_sampling(request).await
-        });
+        let request_handle =
+            tokio::spawn(async move { client_clone.request_sampling(request).await });
 
         if let Some(outgoing) = rx.recv().await {
             let response = SamplingResponse {
